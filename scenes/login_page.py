@@ -84,7 +84,6 @@ class LoginScene:
         self.popup_ok_rect = pygame.Rect(0, 0, 0, 0)
 
     def _init_galaxy_environment(self) -> None:
-        # Reduced balanced background stars (cleaner, less cluttered)
         for _ in range(65):
             self.galaxy_stars.append({
                 "x": random.randint(0, self.width),
@@ -96,19 +95,17 @@ class LoginScene:
                 "twinkle_offset": random.uniform(0, math.pi * 2)
             })
 
-        # Downward-falling space dust particles for clear visibility
         for _ in range(45):
             self.galaxy_dust.append({
                 "x": random.randint(0, self.width),
                 "y": random.randint(0, self.height),
                 "radius": random.uniform(1.5, 3.5),
-                "speed_y": random.uniform(0.5, 1.8),  # Falling downward
-                "drift_x": random.uniform(-0.2, 0.2),  # Gentle horizontal sway
+                "speed_y": random.uniform(0.5, 1.8),
+                "drift_x": random.uniform(-0.2, 0.2),
                 "color": random.choice([(_VIOLET), (_NEON_CYAN), (_MAGENTA_GLOW), (_WHITE)]),
-                "alpha": random.randint(90, 190)       # More visible opacity
+                "alpha": random.randint(90, 190)
             })
 
-        # Drifting nebula clouds for galaxy depth
         for _ in range(5):
             self.galaxy_nebulae.append({
                 "x": random.randint(0, self.width),
@@ -128,7 +125,7 @@ class LoginScene:
             else:
                 self._scaled_panel = None
                 
-            icon_size = max(20, int(42 * scale * 0.55))
+            icon_size = max(22, int(46 * scale * 0.55))
             if self.raw_profile_icon:
                 self._scaled_profile_icon = pygame.transform.smoothscale(self.raw_profile_icon, (icon_size, icon_size))
             else:
@@ -145,7 +142,8 @@ class LoginScene:
             
             if self.show_success_popup:
                 if self.popup_ok_rect.collidepoint(pos):
-                    self.game_manager.state = GameState.PLAYING
+                    # Return to menu shell instead of launching gameplay
+                    self.game_manager.state = GameState.MENU
                     self.game_manager.current_scene = None
                 return
 
@@ -182,7 +180,8 @@ class LoginScene:
             if self.show_success_popup or self.show_unregistered_popup:
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     if self.show_success_popup:
-                        self.game_manager.state = GameState.PLAYING
+                        # Return to menu shell instead of launching gameplay
+                        self.game_manager.state = GameState.MENU
                         self.game_manager.current_scene = None
                     else:
                         self.show_unregistered_popup = False
@@ -193,36 +192,51 @@ class LoginScene:
                 self.selection_active = True
                 return
 
-            target_text = self.username if self.active_field == "username" else self.password
-
-            if event.key == pygame.K_BACKSPACE:
-                if self.selection_active:
-                    target_text = ""
-                    self.selection_active = False
-                else:
-                    target_text = target_text[:-1]
-            elif event.key == pygame.K_TAB:
+            if event.key == pygame.K_TAB:
                 self.active_field = "password" if self.active_field == "username" else "username"
                 self.selection_active = False
-            elif event.key == pygame.K_RETURN:
-                if self.username.strip() and self.password.strip():
-                    if self.username.lower() == "unregistered" or len(self.username) < 4:
-                        self.show_unregistered_popup = True
-                    else:
-                        self.show_success_popup = True
-            else:
-                if event.unicode and event.unicode.isprintable():
-                    if self.selection_active:
-                        target_text = ""
-                        self.selection_active = False
-                    
-                    if len(target_text) < 25:
-                        target_text += event.unicode
+                return
 
             if self.active_field == "username":
-                self.username = target_text
+                if event.key == pygame.K_BACKSPACE:
+                    if self.selection_active:
+                        self.username = ""
+                        self.selection_active = False
+                    else:
+                        self.username = self.username[:-1]
+                elif event.key == pygame.K_RETURN:
+                    if self.username.strip() and self.password.strip():
+                        if self.username.lower() == "unregistered" or len(self.username) < 4:
+                            self.show_unregistered_popup = True
+                        else:
+                            self.show_success_popup = True
+                else:
+                    if event.unicode and event.unicode.isprintable():
+                        if self.selection_active:
+                            self.username = ""
+                            self.selection_active = False
+                        if len(self.username) < 25:
+                            self.username += event.unicode
             else:
-                self.password = target_text
+                if event.key == pygame.K_BACKSPACE:
+                    if self.selection_active:
+                        self.password = ""
+                        self.selection_active = False
+                    else:
+                        self.password = self.password[:-1]
+                elif event.key == pygame.K_RETURN:
+                    if self.username.strip() and self.password.strip():
+                        if self.username.lower() == "unregistered" or len(self.username) < 4:
+                            self.show_unregistered_popup = True
+                        else:
+                            self.show_success_popup = True
+                else:
+                    if event.unicode and event.unicode.isprintable():
+                        if self.selection_active:
+                            self.password = ""
+                            self.selection_active = False
+                        if len(self.password) < 25:
+                            self.password += event.unicode
 
     def update(self) -> None:
         self.width = self.game_manager.width
@@ -243,14 +257,12 @@ class LoginScene:
         else:
             setattr(self.game_manager, "ticks", 0)
 
-        # Update galaxy stars movement
         for star in self.galaxy_stars:
             star["y"] += star["speed"]
             if star["y"] > self.height:
                 star["y"] = 0
                 star["x"] = random.randint(0, self.width)
 
-        # Update downward-falling space dust particles
         for dust in self.galaxy_dust:
             dust["y"] += dust["speed_y"]
             dust["x"] += dust["drift_x"]
@@ -262,7 +274,6 @@ class LoginScene:
             elif dust["x"] > self.width:
                 dust["x"] = 0
 
-        # Update drifting nebulae
         for neb in self.galaxy_nebulae:
             neb["x"] += neb["speed_x"]
             neb["y"] += neb["speed_y"]
@@ -270,7 +281,6 @@ class LoginScene:
                 neb["y"] = -neb["radius"]
                 neb["x"] = random.randint(0, self.width)
 
-        # Controlled frequency shooting stars
         if not getattr(self.game_manager, "shooting_stars", []) and random.random() < 0.015:
             self.local_shooting_stars.append({
                 "x": random.randint(0, self.width),
@@ -287,14 +297,6 @@ class LoginScene:
             if ss["alpha"] <= 0 or ss["x"] > self.width or ss["y"] > self.height:
                 self.local_shooting_stars.remove(ss)
 
-        for shooting_star in getattr(self.game_manager, "shooting_stars", []):
-            if hasattr(shooting_star, "update"):
-                shooting_star.update(self.width, self.height)
-
-        for laser in getattr(self.game_manager, "bg_lasers", []):
-            if hasattr(laser, "update"):
-                laser.update(self.width, self.height)
-
     def draw(self, surface: pygame.Surface | None = None) -> None:
         surface = surface or self.game_manager.screen
         self.game_manager.default_page.render_background()
@@ -303,7 +305,6 @@ class LoginScene:
 
         s = self.game_manager._get_scale()
         
-        # Slightly increased base panel width and height for a bigger, comfortable layout
         panel_w = min(int(680 * s), int(self.width * 0.88))
         panel_h = min(int(630 * s), int(self.height * 0.88))
         
@@ -330,10 +331,10 @@ class LoginScene:
             surface.blit(panel_surf, panel_rect.topleft)
 
         field_w = int(panel_w * 0.62)
-        field_h = max(38, int(48 * s))
+        field_h = max(42, int(52 * s))
         field_x = panel_rect.centerx - field_w // 2
 
-        # Username Input (adjusted vertical offsets for the slightly larger panel)
+        # Username Input
         self.username_rect = pygame.Rect(field_x, panel_rect.top + int(220 * s), field_w, field_h)
         self._draw_cyber_input(
             surface, self.username_rect, self.username, "username", 
@@ -349,20 +350,31 @@ class LoginScene:
             icon_img=self._scaled_padlock_icon, scale=s, has_show_toggle=True
         )
 
-        # Submit Button
-        btn_w = int(field_w * 0.8)
-        btn_h = max(38, int(45 * s))
+        # Cyber Submit Button
+        btn_w = int(field_w * 0.82)
+        btn_h = max(44, int(52 * s))
         self.submit_rect = pygame.Rect(panel_rect.centerx - btn_w // 2, panel_rect.top + int(380 * s), btn_w, btn_h)
         
         mouse_pos = pygame.mouse.get_pos()
         btn_hovered = self.submit_rect.collidepoint(mouse_pos)
-        btn_fill = (65, 32, 110) if btn_hovered else (48, 22, 85)
-        btn_border = _NEON_CYAN if btn_hovered else _PURPLE_BORDER
         
-        self._draw_cut_corner_rect(surface, self.submit_rect, fill=btn_fill, border=btn_border, scale=s, cut=8)
+        if btn_hovered:
+            btn_fill = (80, 42, 145)
+            btn_border = _NEON_CYAN
+        else:
+            btn_fill = (55, 24, 98)
+            btn_border = _PURPLE_BORDER
+            
+        self._draw_cut_corner_rect(surface, self.submit_rect, fill=btn_fill, border=btn_border, scale=s, cut=10)
         
-        btn_font = FontManager.get_font(max(12, int(15 * s)), bold=True)
-        btn_text = btn_font.render("→   LOG IN", True, _WHITE)
+        inner_sub_rect = self.submit_rect.inflate(-int(4 * s), -int(4 * s))
+        pygame.draw.rect(surface, (135, 75, 205), inner_sub_rect, width=1, border_radius=max(3, int(3 * s)))
+        
+        btn_font = FontManager.get_font(max(14, int(18 * s)), bold=True)
+        shadow_surf = btn_font.render("→   L O G   I N", True, (15, 5, 30))
+        surface.blit(shadow_surf, shadow_surf.get_rect(center=(self.submit_rect.centerx + 1, self.submit_rect.centery + 1)))
+        
+        btn_text = btn_font.render("→   L O G   I N", True, _WHITE if btn_hovered else (235, 220, 255))
         surface.blit(btn_text, btn_text.get_rect(center=self.submit_rect.center))
 
         # Register Link
@@ -385,11 +397,10 @@ class LoginScene:
 
         # Popups
         if self.show_success_popup:
-            self._render_popup(surface, s, "Successfully logged in!", "Entering Space Invaders...", _NEON_CYAN)
+            self._render_popup(surface, s, "Successfully logged in!", "Welcome back to Space Invaders!", _NEON_CYAN)
         elif self.show_unregistered_popup:
             self._render_popup(surface, s, "Account Not Registered!", "Please sign up first before logging in.", _RED_ALERT)
 
-        # Fade Overlay
         if self.fade_alpha > 0:
             fade_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
             fade_surf.fill((*_BLACK, self.fade_alpha))
@@ -398,13 +409,11 @@ class LoginScene:
     def _render_starfield_effects(self) -> None:
         screen = self.game_manager.screen
 
-        # 1. Render glowing moving galaxy nebula clouds
         for neb in self.galaxy_nebulae:
             neb_surf = pygame.Surface((int(neb["radius"] * 2), int(neb["radius"] * 2)), pygame.SRCALPHA)
             pygame.draw.circle(neb_surf, (*neb["color"], 18), (int(neb["radius"]), int(neb["radius"])), int(neb["radius"]))
             screen.blit(neb_surf, (int(neb["x"] - neb["radius"]), int(neb["y"] - neb["radius"])))
 
-        # 2. Render subtle background stars (non-intrusive)
         manager_stars = getattr(self.game_manager, "stars", [])
         if manager_stars:
             for star in manager_stars:
@@ -415,14 +424,12 @@ class LoginScene:
                 brightness = max(40, min(200, int(star["brightness"] + twinkle)))
                 pygame.draw.circle(screen, (brightness, brightness, brightness + 35), (int(star["x"]), int(star["y"])), star["size"])
 
-        # 3. Render downward-falling space dust particles (clearly visible)
         for dust in self.galaxy_dust:
             r = int(dust["radius"])
             dust_surf = pygame.Surface((r * 2 + 2, r * 2 + 2), pygame.SRCALPHA)
             pygame.draw.circle(dust_surf, (*dust["color"], dust["alpha"]), (r + 1, r + 1), r)
             screen.blit(dust_surf, (int(dust["x"] - r), int(dust["y"] - r)))
 
-        # 4. Render shooting stars (infrequent & distinct)
         manager_shooting_stars = getattr(self.game_manager, "shooting_stars", [])
         if manager_shooting_stars:
             for shooting_star in manager_shooting_stars:
@@ -434,10 +441,6 @@ class LoginScene:
                 trail_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
                 pygame.draw.line(trail_surf, (255, 255, 255, max(0, min(255, ss["alpha"]))), (ss["x"], ss["y"]), (end_x, end_y), 2)
                 screen.blit(trail_surf, (0, 0))
-
-        # 5. Render background lasers if active
-        for laser in getattr(self.game_manager, "bg_lasers", []):
-            laser.render(screen)
 
     def _render_title_image_top(self) -> None:
         if self.game_manager.title_image:
@@ -479,11 +482,11 @@ class LoginScene:
 
         right_offset_limit = rect.right
         if has_show_toggle:
-            toggle_font = FontManager.get_font(max(10, int(12 * scale)), bold=True)
+            toggle_font = FontManager.get_font(max(11, int(13 * scale)), bold=True)
             toggle_str = "HIDE" if self.show_password else "SHOW"
             text_surf_toggle = toggle_font.render(toggle_str, True, _WHITE)
             
-            padding_w = int(12 * scale)
+            padding_w = int(14 * scale)
             self.show_toggle_rect = pygame.Rect(
                 rect.right - text_surf_toggle.get_width() - padding_w - int(6 * scale), 
                 rect.top + int(6 * scale), 
@@ -498,7 +501,7 @@ class LoginScene:
             self._draw_cut_corner_rect(surface, self.show_toggle_rect, fill=toggle_bg_color, border=_NEON_CYAN if toggle_hover else border_color, scale=scale, cut=4)
             surface.blit(text_surf_toggle, text_surf_toggle.get_rect(center=self.show_toggle_rect.center))
 
-        font = FontManager.get_font(max(11, int(13 * scale)), bold=False)
+        font = FontManager.get_font(max(15, int(17 * scale)), bold=False)
         if not text:
             display_text = placeholder
             color = (170, 150, 200)
@@ -507,7 +510,7 @@ class LoginScene:
             color = _WHITE
         
         text_surf = font.render(display_text, True, color)
-        text_rect = text_surf.get_rect(midleft=(icon_rect.right + int(14 * scale), rect.centery))
+        text_rect = text_surf.get_rect(midleft=(icon_rect.right + int(16 * scale), rect.centery))
         
         if is_active and self.selection_active and text:
             select_surf = pygame.Surface((text_surf.get_width() + 6, text_surf.get_height() + 4), pygame.SRCALPHA)
@@ -517,7 +520,7 @@ class LoginScene:
         surface.blit(text_surf, text_rect)
 
         if is_active and self.cursor_visible and not self.selection_active:
-            cursor_x = text_rect.right + 2 if text else (icon_rect.right + int(14 * scale))
+            cursor_x = text_rect.right + 2 if text else (icon_rect.right + int(16 * scale))
             if cursor_x < right_offset_limit - 5:
                 pygame.draw.line(surface, _NEON_CYAN, (cursor_x, rect.top + int(10 * scale)), (cursor_x, rect.bottom - int(10 * scale)), width=max(1, int(2 * scale)))
 
