@@ -1,6 +1,6 @@
 import mysql.connector
 from mysql.connector import Error
-import bcrypt
+# Remove: import bcrypt (no longer needed)
 
 class DBManager:
     def __init__(self, host="localhost", user="root", password="", database="space_invaders_db"):
@@ -31,7 +31,7 @@ class DBManager:
     # ==================== AUTHENTICATION METHODS ====================
 
     def register_user(self, name, username, password):
-        """Registers a new user with hashed password."""
+        """Registers a new user with plain text password."""
         cursor = self.get_cursor()
         if not cursor:
             return False, "Could not connect to database."
@@ -43,12 +43,9 @@ class DBManager:
                 cursor.close()
                 return False, "Username already exists!"
 
-            # Hash password securely
-            hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-
-            # Insert user into database
+            # Insert user into database using plain text password directly
             query = "INSERT INTO users (name, username, password) VALUES (%s, %s, %s)"
-            cursor.execute(query, (name, username, hashed_pw))
+            cursor.execute(query, (name, username, password))
             self.connection.commit()
             cursor.close()
             return True, "Registration successful!"
@@ -59,7 +56,7 @@ class DBManager:
             return False, f"Database error: {err}"
 
     def login_user(self, username, password):
-        """Authenticates user credentials."""
+        """Authenticates user credentials using plain text comparison."""
         cursor = self.get_cursor(dictionary=True)
         if not cursor:
             return False, "Could not connect to database."
@@ -70,7 +67,8 @@ class DBManager:
             user = cursor.fetchone()
             cursor.close()
 
-            if user and bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
+            # Compare typed password directly with plain text password in database
+            if user and user['password'] == password:
                 return True, user
             return False, "Invalid username or password."
 
