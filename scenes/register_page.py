@@ -189,7 +189,25 @@ class RegisterPage:
             self._set_popup("password_mismatch")
             return
 
-        # 5. Satisfaction confirmation prompt
+        # 5. Save to MySQL Database using DBManager
+        try:
+            # Assuming game_manager has a db instance (e.g., self.game_manager.db)
+            db = getattr(self.game_manager, "db", None)
+            if db:
+                success, message = db.register_user(n, u, p)
+                if not success:
+                    # If username already exists or database error occurs, show custom feedback or a general popup
+                    # You can handle specific error strings or create an error popup state for them
+                    print(f"Registration failed: {message}")
+                    self._set_popup("username_invalid") # Or a dedicated database error popup
+                    return
+            else:
+                print("Warning: Database manager not found in game_manager.")
+        except Exception as e:
+            print(f"Database connection error: {e}")
+            return
+
+        # 6. Satisfaction confirmation prompt or direct success
         self._set_popup("satisfaction_prompt")
 
     def handle_event(self, event: pygame.event.Event) -> None:
