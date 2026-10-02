@@ -522,7 +522,7 @@ class RegisterPage:
             target_h = max(1, int(orig_h * scale_factor))
             scaled_img = pygame.transform.smoothscale(self.game_manager.title_image, (target_w, target_h))
             
-            rect = scaled_img.get_rect(center=(self.width // 2, int(self.height * 0.08)))
+            rect = scaled_img.get_rect(center=(self.width // 2, int(self.height * 0.13)))
             self.game_manager.screen.blit(scaled_img, rect)
 
     def _draw_cyber_input(self, surface: pygame.Surface, rect: pygame.Rect, text: str, placeholder: str, is_active: bool, is_password: bool, icon_img: pygame.Surface | None, scale: float, has_show_toggle: bool = False) -> None:
