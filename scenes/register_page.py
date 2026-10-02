@@ -161,6 +161,22 @@ class RegisterPage:
             if popup_type is not None:
                 self.popup_anim_timer = 0.0
 
+    def _is_username_taken(self, username: str) -> bool:
+        if not username or len(username.strip()) < 8:
+            return False
+        try:
+            db = getattr(self.game_manager, "db", None)
+            if db:
+                if hasattr(db, "check_username"):
+                    return db.check_username(username.strip())
+                elif hasattr(db, "username_exists"):
+                    return db.username_exists(username.strip())
+                elif hasattr(db, "is_username_taken"):
+                    return db.is_username_taken(username.strip())
+        except Exception:
+            pass
+        return False
+
     def _handle_submission(self) -> None:
         n = self.name.strip()
         u = self.username.strip()
@@ -177,37 +193,44 @@ class RegisterPage:
             self._set_popup("username_invalid")
             return
 
-        # 3. Check password length (at least 8 chars), contains numbers, and contains special characters
+        # 3. Check if username is already taken
+        if self._is_username_taken(u):
+            self._set_popup("username_taken")
+            return
+
+        # 4. Check password length (at least 8 chars), contains numbers, and contains special characters
         has_number = bool(re.search(r'\d', p))
         has_special = bool(re.search(r'[^A-Za-z0-9]', p))
         if len(p) < 8 or not has_number or not has_special:
             self._set_popup("password_invalid")
             return
 
-        # 4. Check matching passwords
+        # 5. Check matching passwords
         if p != cp:
             self._set_popup("password_mismatch")
             return
 
-        # 5. Save to MySQL Database using DBManager
+        # 6. Save to MySQL Database using DBManager
         try:
-            # Assuming game_manager has a db instance (e.g., self.game_manager.db)
             db = getattr(self.game_manager, "db", None)
             if db:
                 success, message = db.register_user(n, u, p)
                 if not success:
-                    # If username already exists or database error occurs, show custom feedback or a general popup
-                    # You can handle specific error strings or create an error popup state for them
-                    print(f"Registration failed: {message}")
-                    self._set_popup("username_invalid") # Or a dedicated database error popup
+                    msg_lower = message.lower()
+                    if "exist" in msg_lower or "taken" in msg_lower or "duplicate" in msg_lower or "already" in msg_lower:
+                        self._set_popup("username_taken")
+                    else:
+                        print(f"Registration failed: {message}")
+                        self._set_popup("username_invalid")
                     return
             else:
                 print("Warning: Database manager not found in game_manager.")
         except Exception as e:
             print(f"Database connection error: {e}")
+            self._set_popup("username_taken")
             return
 
-        # 6. Satisfaction confirmation prompt or direct success
+        # 7. Satisfaction confirmation prompt or direct success
         self._set_popup("satisfaction_prompt")
 
     def handle_event(self, event: pygame.event.Event) -> None:
@@ -399,7 +422,7 @@ class RegisterPage:
                 (c_cut, panel_h), (0, panel_h - c_cut), (0, c_cut)
             ]
             pygame.draw.polygon(panel_surf, (45, 30, 75, 200), panel_points)
-            pygame.draw.polygon(panel_surf, _PURPLE_BORDER, panel_points, width=max(1, int(2 * s)))
+            pygame.draw.polygon(panel_surf, _PURPLE_BORDER, panel_points, width=max(2, int(3 * s)))
             surface.blit(panel_surf, panel_rect.topleft)
 
         self._draw_techy_corners(surface, panel_rect, _PURPLE_BORDER, s, length=18)
@@ -419,12 +442,28 @@ class RegisterPage:
             icon_img=self._scaled_profile_icon, scale=s
         )
 
-        # 2. Username Input
+        # 2. Username Input with Flashing Red (Taken) or Flashing Green (Available + 8+ chars) Outline
         self.username_rect = pygame.Rect(field_x, start_y + spacing_y, field_w, field_h)
+        u_trimmed = self.username.strip()
+        
+        if len(u_trimmed) >= 8:
+            # Use math.sin wave for flashing effect based on galaxy_timer
+            flash_wave = (math.sin(self.galaxy_timer * 10) + 1) / 2 # ranges from 0.0 to 1.0
+            if self._is_username_taken(u_trimmed):
+                # Flash between intense red and dark red/maroon
+                r_val = int(120 + 135 * flash_wave)
+                username_border = (r_val, int(30 * (1 - flash_wave)), int(30 * (1 - flash_wave)))
+            else:
+                # Flash between vibrant green and emerald green
+                g_val = int(150 + 105 * flash_wave)
+                username_border = (int(30 * (1 - flash_wave)), g_val, int(50 * (1 - flash_wave)))
+        else:
+            username_border = _NEON_CYAN if (self.active_field == "username") else (160, 95, 230)
+
         self._draw_cyber_input(
             surface, self.username_rect, self.username, "Username (min 8 chars)", 
             is_active=(self.active_field == "username"), is_password=False, 
-            icon_img=self._scaled_profile_icon, scale=s
+            icon_img=self._scaled_profile_icon, scale=s, custom_border=username_border
         )
 
         # 3. Password Input
@@ -456,7 +495,7 @@ class RegisterPage:
         self._draw_cut_corner_rect(surface, self.submit_rect, fill=btn_fill, border=btn_border, scale=s, cut=10)
         
         inner_sub_rect = self.submit_rect.inflate(-int(4 * s), -int(4 * s))
-        pygame.draw.rect(surface, (135, 75, 205), inner_sub_rect, width=1, border_radius=max(3, int(3 * s)))
+        pygame.draw.rect(surface, (135, 75, 205), inner_sub_rect, width=2, border_radius=max(3, int(3 * s)))
         
         btn_font = FontManager.get_font(max(14, int(17 * s)), bold=True)
         shadow_surf = btn_font.render("→   R E G I S T E R", True, (15, 5, 30))
@@ -473,6 +512,8 @@ class RegisterPage:
             self._render_popup(surface, s, "Incomplete Details", "Please fill in all input fields!", _NEON_CYAN, icon_symbol="?")
         elif self.active_popup == "username_invalid":
             self._render_popup(surface, s, "Username Error", "Username must be at least 8 characters long!", _PURPLE_BORDER, icon_symbol="!")
+        elif self.active_popup == "username_taken":
+            self._render_popup(surface, s, "Account is already Created", "Username is Already taken!", (255, 80, 80), icon_symbol="!")
         elif self.active_popup == "password_invalid":
             self._render_popup(surface, s, "Password Error", "Password needs 8+ chars, numbers & special symbols!", _PURPLE_BORDER, icon_symbol="!")
         elif self.active_popup == "password_mismatch":
@@ -525,9 +566,9 @@ class RegisterPage:
             rect = scaled_img.get_rect(center=(self.width // 2, int(self.height * 0.13)))
             self.game_manager.screen.blit(scaled_img, rect)
 
-    def _draw_cyber_input(self, surface: pygame.Surface, rect: pygame.Rect, text: str, placeholder: str, is_active: bool, is_password: bool, icon_img: pygame.Surface | None, scale: float, has_show_toggle: bool = False) -> None:
+    def _draw_cyber_input(self, surface: pygame.Surface, rect: pygame.Rect, text: str, placeholder: str, is_active: bool, is_password: bool, icon_img: pygame.Surface | None, scale: float, has_show_toggle: bool = False, custom_border=None) -> None:
         fill_color = (25, 12, 50, 220)
-        border_color = _NEON_CYAN if is_active else (160, 95, 230)
+        border_color = custom_border if custom_border is not None else (_NEON_CYAN if is_active else (160, 95, 230))
         
         field_surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
         c = 6
@@ -537,14 +578,15 @@ class RegisterPage:
             (c, rect.height), (0, rect.height - c), (0, c)
         ]
         pygame.draw.polygon(field_surf, fill_color, points)
-        pygame.draw.polygon(field_surf, border_color, points, width=max(1, int(2 * scale)))
+        # Thicker border width set to 3.5x - 4x scale for a bolder outline
+        pygame.draw.polygon(field_surf, border_color, points, width=max(2, int(3.5 * scale)))
         surface.blit(field_surf, rect.topleft)
 
         icon_w = int(rect.height * 0.95)
         icon_rect = pygame.Rect(rect.left, rect.top, icon_w, rect.height)
         icon_bg_surf = pygame.Surface((icon_rect.width, icon_rect.height), pygame.SRCALPHA)
         pygame.draw.polygon(icon_bg_surf, (45, 20, 80, 200), points)
-        pygame.draw.polygon(icon_bg_surf, border_color, points, width=max(1, int(1 * scale)))
+        pygame.draw.polygon(icon_bg_surf, border_color, points, width=max(2, int(2 * scale)))
         surface.blit(icon_bg_surf, icon_rect.topleft)
         
         if icon_img:
@@ -619,7 +661,7 @@ class RegisterPage:
 
     def _draw_techy_corners(self, surface: pygame.Surface, rect: pygame.Rect, color, scale: float, length: int = 16) -> None:
         l = int(length * scale)
-        th = max(1, int(2 * scale))
+        th = max(2, int(3 * scale))
         
         pygame.draw.line(surface, color, rect.topleft, (rect.left + l, rect.top), width=th)
         pygame.draw.line(surface, color, rect.topleft, (rect.left, rect.top + l), width=th)
@@ -656,7 +698,7 @@ class RegisterPage:
         ]
         
         pygame.draw.polygon(pop_surf, (28, 12, 55, int(250 * anim_progress)), pop_points)
-        pygame.draw.polygon(pop_surf, border_col, pop_points, width=max(2, int(2 * scale)))
+        pygame.draw.polygon(pop_surf, border_col, pop_points, width=max(2, int(3 * scale)))
         surface.blit(pop_surf, pop_rect.topleft)
 
         self._draw_techy_corners(surface, pop_rect, border_col, scale, length=14)
@@ -664,7 +706,7 @@ class RegisterPage:
         badge_radius = int(18 * scale)
         badge_center = (pop_rect.centerx, pop_rect.top + int(36 * scale))
         pygame.draw.circle(surface, (50, 20, 90), badge_center, badge_radius)
-        pygame.draw.circle(surface, border_col, badge_center, badge_radius, width=max(1, int(2 * scale)))
+        pygame.draw.circle(surface, border_col, badge_center, badge_radius, width=max(2, int(2 * scale)))
         
         badge_font = FontManager.get_font(max(15, int(20 * scale)), bold=True)
         badge_text = badge_font.render(icon_symbol, True, _WHITE)
@@ -717,7 +759,7 @@ class RegisterPage:
         ]
         
         pygame.draw.polygon(pop_surf, (28, 12, 55, int(250 * anim_progress)), pop_points)
-        pygame.draw.polygon(pop_surf, _NEON_CYAN, pop_points, width=max(2, int(2 * scale)))
+        pygame.draw.polygon(pop_surf, _NEON_CYAN, pop_points, width=max(2, int(3 * scale)))
         surface.blit(pop_surf, pop_rect.topleft)
 
         self._draw_techy_corners(surface, pop_rect, _NEON_CYAN, scale, length=14)
@@ -725,7 +767,7 @@ class RegisterPage:
         badge_radius = int(18 * scale)
         badge_center = (pop_rect.centerx, pop_rect.top + int(36 * scale))
         pygame.draw.circle(surface, (50, 20, 90), badge_center, badge_radius)
-        pygame.draw.circle(surface, _NEON_CYAN, badge_center, badge_radius, width=max(1, int(2 * scale)))
+        pygame.draw.circle(surface, _NEON_CYAN, badge_center, badge_radius, width=max(2, int(2 * scale)))
         
         badge_font = FontManager.get_font(max(15, int(20 * scale)), bold=True)
         badge_text = badge_font.render("?", True, _WHITE)
@@ -776,4 +818,4 @@ class RegisterPage:
             (rect.left, rect.top + c),
         ]
         pygame.draw.polygon(surface, fill[:3], points)
-        pygame.draw.polygon(surface, border, points, width=max(1, int(2 * scale)))
+        pygame.draw.polygon(surface, border, points, width=max(2, int(3 * scale)))
