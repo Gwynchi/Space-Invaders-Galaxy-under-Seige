@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-# Import LoginScene for returning back safely
+# Import LoginScene for returning back safely[cite: 2]
 try:
     from scenes.login_page import LoginScene
 except ImportError:
@@ -31,22 +31,18 @@ class RegisterPage:
         self.width = game_manager.width
         self.height = game_manager.height
         
-        # Smooth transition states
-        self.fade_alpha = 255  # Start fully black for a smooth fade-in
-        self.transitioning_out = False
-        self.next_scene = None
-        
+        self.fade_alpha = 150
         self.float_timer = 0.0
         self.galaxy_timer = 0.0
         
-        # Local galaxy & starfield elements for deep space immersion
+        # Local galaxy & starfield elements for deep space immersion[cite: 2]
         self.galaxy_stars = []
         self.galaxy_dust = []
         self.galaxy_nebulae = []
         self.local_shooting_stars = []
         self._init_galaxy_environment()
 
-        # Load assets once
+        # Load assets once[cite: 2]
         try:
             self.raw_panel_image = pygame.image.load("assets/image/text/REGISTER.png").convert_alpha()
         except Exception:
@@ -62,30 +58,30 @@ class RegisterPage:
         except Exception:
             self.raw_padlock_icon = None
             
-        # Cached scaled assets to prevent lag
+        # Cached scaled assets to prevent lag[cite: 2]
         self._cached_scale = -1
         self._scaled_panel = None
         self._scaled_profile_icon = None
         self._scaled_padlock_icon = None
         
-        # Text fields
+        # Text fields[cite: 2]
         self.name = ""
         self.username = ""
         self.password = ""
         self.confirm_password = ""
         self.active_field = "name"
         
-        # Cursor & Selection state
+        # Cursor & Selection state[cite: 2]
         self.cursor_visible = True
         self.cursor_timer = 0.0
         self.selection_active = False
         self.show_password = False
         
-        # Popup states ("missing_fields", "password_mismatch", "success")
+        # Popup states ("missing_fields", "password_mismatch", "success")[cite: 2]
         self.active_popup = None
         self.popup_anim_timer = 0.0
         
-        # Rects
+        # Rects[cite: 2]
         self.name_rect = pygame.Rect(0, 0, 0, 0)
         self.username_rect = pygame.Rect(0, 0, 0, 0)
         self.password_rect = pygame.Rect(0, 0, 0, 0)
@@ -168,9 +164,6 @@ class RegisterPage:
             self._set_popup("success")
 
     def handle_event(self, event: pygame.event.Event) -> None:
-        if self.transitioning_out:
-            return  # Ignore inputs while transitioning out
-
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
             
@@ -178,8 +171,7 @@ class RegisterPage:
                 if self.popup_ok_rect.collidepoint(pos):
                     if self.active_popup == "success":
                         if LoginScene is not None:
-                            self.transitioning_out = True
-                            self.next_scene = LoginScene(self.game_manager)
+                            self.game_manager.current_scene = LoginScene(self.game_manager)
                         else:
                             self.game_manager.current_scene = None
                     else:
@@ -188,8 +180,7 @@ class RegisterPage:
 
             if self.back_rect.collidepoint(pos):
                 if LoginScene is not None:
-                    self.transitioning_out = True
-                    self.next_scene = LoginScene(self.game_manager)
+                    self.game_manager.current_scene = LoginScene(self.game_manager)
                 else:
                     self.game_manager.current_scene = None
                 return
@@ -218,8 +209,7 @@ class RegisterPage:
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     if self.active_popup == "success":
                         if LoginScene is not None:
-                            self.transitioning_out = True
-                            self.next_scene = LoginScene(self.game_manager)
+                            self.game_manager.current_scene = LoginScene(self.game_manager)
                         else:
                             self.game_manager.current_scene = None
                     else:
@@ -257,13 +247,7 @@ class RegisterPage:
         self.width = self.game_manager.width
         self.height = self.game_manager.height
         
-        # Handle smooth fade transitions
-        if self.transitioning_out:
-            self.fade_alpha = min(255, self.fade_alpha + 20)
-            if self.fade_alpha >= 255:
-                self.game_manager.current_scene = self.next_scene
-                return
-        elif self.fade_alpha > 0:
+        if self.fade_alpha > 0:
             self.fade_alpha = max(0, self.fade_alpha - 15)
             
         self.float_timer += 0.05
@@ -309,6 +293,7 @@ class RegisterPage:
 
         s = self.game_manager._get_scale()
         
+        # Make panel wider
         panel_w = min(int(920 * s), int(self.width * 0.98))
         if self.raw_panel_image:
             orig_w, orig_h = self.raw_panel_image.get_size()
@@ -340,6 +325,7 @@ class RegisterPage:
 
         self._draw_techy_corners(surface, panel_rect, _PURPLE_BORDER, s, length=18)
 
+        # Make input fields even smaller/narrower (0.48) and pushed down a bit (190 * s)
         field_w = int(panel_w * 0.48)
         field_h = max(38, int(46 * s))
         field_x = panel_rect.centerx - field_w // 2
@@ -379,12 +365,13 @@ class RegisterPage:
             icon_img=self._scaled_padlock_icon, scale=s
         )
 
+        # Make Submit Register Button smaller/narrower as well
         btn_w = int(field_w * 0.70)
         btn_h = max(40, int(48 * s))
         self.submit_rect = pygame.Rect(panel_rect.centerx - btn_w // 2, start_y + spacing_y * 4 + int(10 * s), btn_w, btn_h)
         
         mouse_pos = pygame.mouse.get_pos()
-        btn_hovered = self.submit_rect.collidepoint(mouse_pos) and (self.active_popup is None) and not self.transitioning_out
+        btn_hovered = self.submit_rect.collidepoint(mouse_pos) and (self.active_popup is None)
         
         btn_fill = (80, 42, 145) if btn_hovered else (55, 24, 98)
         btn_border = _NEON_CYAN if btn_hovered else _PURPLE_BORDER
@@ -412,7 +399,6 @@ class RegisterPage:
         elif self.active_popup == "success":
             self._render_popup(surface, s, "Registration Complete", "Account successfully created!", _NEON_CYAN, icon_symbol="✓")
 
-        # Smooth transition overlay
         if self.fade_alpha > 0:
             fade_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
             fade_surf.fill((*_BLACK, self.fade_alpha))
@@ -496,7 +482,7 @@ class RegisterPage:
             )
             right_offset_limit = self.show_toggle_rect.left - int(8 * scale)
             
-            toggle_hover = self.show_toggle_rect.collidepoint(pygame.mouse.get_pos()) and (self.active_popup is None) and not self.transitioning_out
+            toggle_hover = self.show_toggle_rect.collidepoint(pygame.mouse.get_pos()) and (self.active_popup is None)
             toggle_bg_color = (70, 35, 120) if toggle_hover else (45, 22, 85)
             
             self._draw_cut_corner_rect(surface, self.show_toggle_rect, fill=toggle_bg_color, border=_NEON_CYAN if toggle_hover else border_color, scale=scale, cut=4)
@@ -537,7 +523,7 @@ class RegisterPage:
         self.back_rect = pygame.Rect(int(30 * scale), int(28 * scale), btn_w, btn_h)
         
         mouse_pos = pygame.mouse.get_pos()
-        hovered = self.back_rect.collidepoint(mouse_pos) and (self.active_popup is None) and not self.transitioning_out
+        hovered = self.back_rect.collidepoint(mouse_pos) and (self.active_popup is None)
         fill_color = (65, 32, 110, 230) if hovered else (42, 20, 75, 200)
         border_color = _NEON_CYAN if hovered else _PURPLE_BORDER
         
