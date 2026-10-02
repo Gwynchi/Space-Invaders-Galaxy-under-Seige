@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import random
 import pygame
 from utils.font_manager import FontManager
 from utils.constants import GameState
@@ -12,6 +13,7 @@ _PURPLE_BORDER = (195, 110, 255)
 _NEON_CYAN = (80, 230, 255)
 _WHITE = (255, 255, 255)
 _RED_ALERT = (255, 80, 80)
+_MAGENTA_GLOW = (220, 70, 200)
 
 
 class LoginScene:
@@ -22,7 +24,15 @@ class LoginScene:
         
         self.fade_alpha = 255
         self.float_timer = 0.0
+        self.galaxy_timer = 0.0
         
+        # Local galaxy & starfield elements for deep space immersion
+        self.galaxy_stars = []
+        self.galaxy_dust = []
+        self.galaxy_nebulae = []
+        self.local_shooting_stars = []
+        self._init_galaxy_environment()
+
         # Load assets once
         try:
             self.raw_panel_image = pygame.image.load("assets/image/text/System_Login.png").convert_alpha()
@@ -68,6 +78,42 @@ class LoginScene:
         self.back_rect = pygame.Rect(0, 0, 0, 0)
         self.register_link_rect = pygame.Rect(0, 0, 0, 0)
         self.popup_ok_rect = pygame.Rect(0, 0, 0, 0)
+
+    def _init_galaxy_environment(self) -> None:
+        # Multi-layer parallax stars
+        for _ in range(120):
+            self.galaxy_stars.append({
+                "x": random.randint(0, self.width),
+                "y": random.randint(0, self.height),
+                "size": random.choice([1, 1, 2, 3]),
+                "speed": random.uniform(0.1, 0.9),
+                "brightness": random.randint(120, 255),
+                "twinkle_speed": random.uniform(0.02, 0.08),
+                "twinkle_offset": random.uniform(0, math.pi * 2)
+            })
+
+        # Drifting space galaxy dust particles
+        for _ in range(35):
+            self.galaxy_dust.append({
+                "x": random.randint(0, self.width),
+                "y": random.randint(0, self.height),
+                "radius": random.randint(2, 5),
+                "dx": random.uniform(-0.3, 0.3),
+                "dy": random.uniform(-0.2, 0.2),
+                "color": random.choice([(_VIOLET), (_NEON_CYAN), (_MAGENTA_GLOW)]),
+                "alpha": random.randint(40, 120)
+            })
+
+        # Drifting nebula clouds for galaxy depth
+        for _ in range(6):
+            self.galaxy_nebulae.append({
+                "x": random.randint(0, self.width),
+                "y": random.randint(0, self.height),
+                "radius": random.randint(150, 300),
+                "color": random.choice([(70, 20, 100), (20, 50, 100), (90, 30, 90)]),
+                "speed_x": random.uniform(-0.1, 0.1),
+                "speed_y": random.uniform(-0.05, 0.05)
+            })
 
     def _update_asset_cache(self, scale: float, panel_w: int, panel_h: int) -> None:
         if self._cached_scale != scale:
@@ -182,6 +228,7 @@ class LoginScene:
             self.fade_alpha = max(0, self.fade_alpha - 15)
             
         self.float_timer += 0.05
+        self.galaxy_timer += 0.03
         self.cursor_timer += 0.03
         if self.cursor_timer >= 1.0:
             self.cursor_timer = 0.0
@@ -189,6 +236,46 @@ class LoginScene:
 
         if hasattr(self.game_manager, "ticks"):
             self.game_manager.ticks += 1
+        else:
+            setattr(self.game_manager, "ticks", 0)
+
+        # Update galaxy stars movement
+        for star in self.galaxy_stars:
+            star["y"] += star["speed"]
+            if star["y"] > self.height:
+                star["y"] = 0
+                star["x"] = random.randint(0, self.width)
+
+        # Update drifting space dust
+        for dust in self.galaxy_dust:
+            dust["x"] += dust["dx"]
+            dust["y"] += dust["dy"]
+            if dust["x"] < 0: dust["x"] = self.width
+            elif dust["x"] > self.width: dust["x"] = 0
+            if dust["y"] < 0: dust["y"] = self.height
+            elif dust["y"] > self.height: dust["y"] = 0
+
+        # Update drifting nebulae
+        for neb in self.galaxy_nebulae:
+            neb["x"] += neb["speed_x"]
+            neb["y"] += neb["speed_y"]
+
+        # Randomly spawn dynamic shooting stars for galaxy effect
+        if not getattr(self.game_manager, "shooting_stars", []) and random.random() < 0.03:
+            self.local_shooting_stars.append({
+                "x": random.randint(0, self.width),
+                "y": random.randint(0, self.height // 2),
+                "length": random.randint(100, 180),
+                "speed": random.randint(14, 22),
+                "alpha": 255
+            })
+
+        for ss in self.local_shooting_stars[:]:
+            ss["x"] += ss["speed"]
+            ss["y"] += ss["speed"] // 2
+            ss["alpha"] -= 6
+            if ss["alpha"] <= 0 or ss["x"] > self.width or ss["y"] > self.height:
+                self.local_shooting_stars.remove(ss)
 
         for shooting_star in getattr(self.game_manager, "shooting_stars", []):
             if hasattr(shooting_star, "update"):
@@ -298,25 +385,59 @@ class LoginScene:
             surface.blit(fade_surf, (0, 0))
 
     def _render_starfield_effects(self) -> None:
-        for star in getattr(self.game_manager, "stars", []):
-            star.render(self.game_manager.screen, getattr(self.game_manager, "ticks", 0))
-        for shooting_star in getattr(self.game_manager, "shooting_stars", []):
-            shooting_star.render(self.game_manager.screen)
+        screen = self.game_manager.screen
+
+        # 1. Render glowing moving galaxy nebula clouds
+        for neb in self.galaxy_nebulae:
+            neb_surf = pygame.Surface((neb["radius"] * 2, neb["radius"] * 2), pygame.SRCALPHA)
+            pygame.draw.circle(neb_surf, (*neb["color"], 22), (neb["radius"], neb["radius"]), neb["radius"])
+            screen.blit(neb_surf, (neb["x"] - neb["radius"], neb["y"] - neb["radius"]))
+
+        # 2. Render manager stars or fallback galaxy parallax stars with twinkling effect
+        manager_stars = getattr(self.game_manager, "stars", [])
+        if manager_stars:
+            for star in manager_stars:
+                star.render(screen, getattr(self.game_manager, "ticks", 0))
+        else:
+            for i, star in enumerate(self.galaxy_stars):
+                twinkle = math.sin(self.galaxy_timer * 3 + star["twinkle_offset"]) * 50
+                brightness = max(50, min(255, int(star["brightness"] + twinkle)))
+                color = (brightness, brightness, 255) if i % 3 != 0 else (255, 220, brightness)
+                pygame.draw.circle(screen, color, (int(star["x"]), int(star["y"])), star["size"])
+
+        # 3. Render floating galaxy dust particles
+        for dust in self.galaxy_dust:
+            dust_surf = pygame.Surface((dust["radius"] * 2, dust["radius"] * 2), pygame.SRCALPHA)
+            pygame.draw.circle(dust_surf, (*dust["color"], dust["alpha"]), (dust["radius"], dust["radius"]), dust["radius"])
+            screen.blit(dust_surf, (int(dust["x"] - dust["radius"]), int(dust["y"] - dust["radius"])))
+
+        # 4. Render shooting stars
+        manager_shooting_stars = getattr(self.game_manager, "shooting_stars", [])
+        if manager_shooting_stars:
+            for shooting_star in manager_shooting_stars:
+                shooting_star.render(screen)
+        else:
+            for ss in self.local_shooting_stars:
+                end_x = ss["x"] - ss["length"]
+                end_y = ss["y"] - (ss["length"] // 2)
+                trail_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+                pygame.draw.line(trail_surf, (255, 255, 255, max(0, min(255, ss["alpha"]))), (ss["x"], ss["y"]), (end_x, end_y), 2)
+                screen.blit(trail_surf, (0, 0))
+
+        # 5. Render background lasers if active
         for laser in getattr(self.game_manager, "bg_lasers", []):
-            laser.render(self.game_manager.screen)
+            laser.render(screen)
 
     def _render_title_image_top(self) -> None:
         if self.game_manager.title_image:
             orig_w, orig_h = self.game_manager.title_image.get_size()
-            # Pinalaki natin ang max width at height para mas lumaki ang header
-            max_w = int(self.width * 0.62)  # Mula 0.48 ginawang 0.62
-            max_h = int(self.height * 0.26) # Mula 0.20 ginawang 0.26
+            max_w = int(self.width * 0.62)
+            max_h = int(self.height * 0.26)
             scale_factor = min(max_w / orig_w, max_h / orig_h)
             target_w = max(1, int(orig_w * scale_factor))
             target_h = max(1, int(orig_h * scale_factor))
             scaled_img = pygame.transform.smoothscale(self.game_manager.title_image, (target_w, target_h))
             
-            # Sinumunod din natin nang kaunti ang posisyon para hindi sumayad sa panel
             rect = scaled_img.get_rect(center=(self.width // 2, int(self.height * 0.14)))
             self.game_manager.screen.blit(scaled_img, rect)
 
@@ -390,7 +511,6 @@ class LoginScene:
                 pygame.draw.line(surface, _NEON_CYAN, (cursor_x, rect.top + int(10 * scale)), (cursor_x, rect.bottom - int(10 * scale)), width=max(1, int(2 * scale)))
 
     def _draw_back_button(self, surface: pygame.Surface, scale: float) -> None:
-        # Mas pino at malinis na cyber button tingnan sa itaas-kaliwa
         btn_w = int(110 * scale)
         btn_h = int(40 * scale)
         self.back_rect = pygame.Rect(int(30 * scale), int(28 * scale), btn_w, btn_h)
