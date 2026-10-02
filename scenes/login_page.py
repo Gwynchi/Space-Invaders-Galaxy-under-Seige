@@ -10,14 +10,22 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
+# Import RegisterScene/RegisterPage if available in your project structure
+try:
+    from scenes.register_page import RegisterPage
+except ImportError:
+    RegisterPage = None
+
 # Colors
 _BLACK = (3, 2, 15)
 _VIOLET = (140, 70, 200)
 _PURPLE_BORDER = (195, 110, 255)
 _NEON_CYAN = (80, 230, 255)
 _WHITE = (255, 255, 255)
-_RED_ALERT = (255, 80, 80)
 _MAGENTA_GLOW = (220, 70, 200)
+
+# Predefined registered users for validation
+REGISTERED_USERS = ["admin", "player1", "commander", "pilot"]
 
 
 class LoginScene:
@@ -70,9 +78,8 @@ class LoginScene:
         self.selection_active = False
         self.show_password = False
         
-        # Popups
-        self.show_success_popup = False
-        self.show_unregistered_popup = False
+        # Popup states ("unregistered", "missing_password", "missing_credentials")
+        self.active_popup = None
         
         # Rects
         self.username_rect = pygame.Rect(0, 0, 0, 0)
@@ -136,20 +143,30 @@ class LoginScene:
             else:
                 self._scaled_padlock_icon = None
 
+    def _handle_submission(self) -> None:
+        u = self.username.strip()
+        p = self.password.strip()
+        
+        if u and not p:
+            self.active_popup = "missing_password"
+        elif not u and p:
+            self.active_popup = "unregistered"
+        elif not u and not p:
+            self.active_popup = "missing_credentials"
+        else:
+            if u.lower() not in REGISTERED_USERS:
+                self.active_popup = "unregistered"
+            else:
+                self.game_manager.state = GameState.MENU
+                self.game_manager.current_scene = None
+
     def handle_event(self, event: pygame.event.Event) -> None:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
             
-            if self.show_success_popup:
+            if self.active_popup:
                 if self.popup_ok_rect.collidepoint(pos):
-                    # Return to menu shell instead of launching gameplay
-                    self.game_manager.state = GameState.MENU
-                    self.game_manager.current_scene = None
-                return
-
-            if self.show_unregistered_popup:
-                if self.popup_ok_rect.collidepoint(pos):
-                    self.show_unregistered_popup = False
+                    self.active_popup = None
                 return
 
             if self.back_rect.collidepoint(pos):
@@ -168,23 +185,17 @@ class LoginScene:
                 self.active_field = "password"
                 self.selection_active = False
             elif self.submit_rect.collidepoint(pos):
-                if self.username.strip() and self.password.strip():
-                    if self.username.lower() == "unregistered" or len(self.username) < 4:
-                        self.show_unregistered_popup = True
-                    else:
-                        self.show_success_popup = True
+                self._handle_submission()
             elif self.register_link_rect.collidepoint(pos):
-                print("Redirect to Register Page clicked")
+                if RegisterPage is not None:
+                    self.game_manager.current_scene = RegisterPage(self.game_manager)
+                else:
+                    print("Redirect to Register Page clicked (RegisterPage class not imported)")
 
         elif event.type == pygame.KEYDOWN:
-            if self.show_success_popup or self.show_unregistered_popup:
+            if self.active_popup:
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                    if self.show_success_popup:
-                        # Return to menu shell instead of launching gameplay
-                        self.game_manager.state = GameState.MENU
-                        self.game_manager.current_scene = None
-                    else:
-                        self.show_unregistered_popup = False
+                    self.active_popup = None
                 return
 
             mods = pygame.key.get_mods()
@@ -197,6 +208,10 @@ class LoginScene:
                 self.selection_active = False
                 return
 
+            if event.key == pygame.K_RETURN:
+                self._handle_submission()
+                return
+
             if self.active_field == "username":
                 if event.key == pygame.K_BACKSPACE:
                     if self.selection_active:
@@ -204,12 +219,6 @@ class LoginScene:
                         self.selection_active = False
                     else:
                         self.username = self.username[:-1]
-                elif event.key == pygame.K_RETURN:
-                    if self.username.strip() and self.password.strip():
-                        if self.username.lower() == "unregistered" or len(self.username) < 4:
-                            self.show_unregistered_popup = True
-                        else:
-                            self.show_success_popup = True
                 else:
                     if event.unicode and event.unicode.isprintable():
                         if self.selection_active:
@@ -224,12 +233,6 @@ class LoginScene:
                         self.selection_active = False
                     else:
                         self.password = self.password[:-1]
-                elif event.key == pygame.K_RETURN:
-                    if self.username.strip() and self.password.strip():
-                        if self.username.lower() == "unregistered" or len(self.username) < 4:
-                            self.show_unregistered_popup = True
-                        else:
-                            self.show_success_popup = True
                 else:
                     if event.unicode and event.unicode.isprintable():
                         if self.selection_active:
@@ -330,6 +333,8 @@ class LoginScene:
             pygame.draw.polygon(panel_surf, _PURPLE_BORDER, panel_points, width=max(1, int(2 * s)))
             surface.blit(panel_surf, panel_rect.topleft)
 
+        self._draw_techy_corners(surface, panel_rect, _PURPLE_BORDER, s, length=18)
+
         field_w = int(panel_w * 0.62)
         field_h = max(42, int(52 * s))
         field_x = panel_rect.centerx - field_w // 2
@@ -356,7 +361,7 @@ class LoginScene:
         self.submit_rect = pygame.Rect(panel_rect.centerx - btn_w // 2, panel_rect.top + int(380 * s), btn_w, btn_h)
         
         mouse_pos = pygame.mouse.get_pos()
-        btn_hovered = self.submit_rect.collidepoint(mouse_pos)
+        btn_hovered = self.submit_rect.collidepoint(mouse_pos) and (self.active_popup is None)
         
         if btn_hovered:
             btn_fill = (80, 42, 145)
@@ -377,14 +382,14 @@ class LoginScene:
         btn_text = btn_font.render("→   L O G   I N", True, _WHITE if btn_hovered else (235, 220, 255))
         surface.blit(btn_text, btn_text.get_rect(center=self.submit_rect.center))
 
-        # Register Link
-        link_font = FontManager.get_font(max(10, int(12 * s)), bold=False)
-        link_text_surf = link_font.render("Haven't registered to Space Invader yet? ", True, (210, 195, 235))
+        # Register Link (Larger text layout)
+        link_font = FontManager.get_font(max(12, int(15 * s)), bold=False)
+        link_text_surf = link_font.render("Haven't registered to Space Invaders? ", True, (210, 195, 235))
         click_text_surf = link_font.render("Click Here!  >", True, _NEON_CYAN)
         
         total_w = link_text_surf.get_width() + click_text_surf.get_width()
         start_x = panel_rect.centerx - total_w // 2
-        link_y = panel_rect.top + int(475 * s)
+        link_y = panel_rect.top + int(470 * s)
         
         surface.blit(link_text_surf, (start_x, link_y))
         click_x = start_x + link_text_surf.get_width()
@@ -395,11 +400,13 @@ class LoginScene:
         # Back Button
         self._draw_back_button(surface, s)
 
-        # Popups
-        if self.show_success_popup:
-            self._render_popup(surface, s, "Successfully logged in!", "Welcome back to Space Invaders!", _NEON_CYAN)
-        elif self.show_unregistered_popup:
-            self._render_popup(surface, s, "Account Not Registered!", "Please sign up first before logging in.", _RED_ALERT)
+        # Active Popup Dialog
+        if self.active_popup == "unregistered":
+            self._render_popup(surface, s, "Account Not Registered", "You haven't registered yet!", _PURPLE_BORDER, icon_symbol="!")
+        elif self.active_popup == "missing_password":
+            self._render_popup(surface, s, "Password Required", "Please input your password!", _NEON_CYAN, icon_symbol="?")
+        elif self.active_popup == "missing_credentials":
+            self._render_popup(surface, s, "Input Required", "Please enter your username and password!", _NEON_CYAN, icon_symbol="?")
 
         if self.fade_alpha > 0:
             fade_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
@@ -495,7 +502,7 @@ class LoginScene:
             )
             right_offset_limit = self.show_toggle_rect.left
             
-            toggle_hover = self.show_toggle_rect.collidepoint(pygame.mouse.get_pos())
+            toggle_hover = self.show_toggle_rect.collidepoint(pygame.mouse.get_pos()) and (self.active_popup is None)
             toggle_bg_color = (70, 35, 120) if toggle_hover else (45, 22, 85)
             
             self._draw_cut_corner_rect(surface, self.show_toggle_rect, fill=toggle_bg_color, border=_NEON_CYAN if toggle_hover else border_color, scale=scale, cut=4)
@@ -530,7 +537,7 @@ class LoginScene:
         self.back_rect = pygame.Rect(int(30 * scale), int(28 * scale), btn_w, btn_h)
         
         mouse_pos = pygame.mouse.get_pos()
-        hovered = self.back_rect.collidepoint(mouse_pos)
+        hovered = self.back_rect.collidepoint(mouse_pos) and (self.active_popup is None)
         fill_color = (65, 32, 110, 230) if hovered else (42, 20, 75, 200)
         border_color = _NEON_CYAN if hovered else _PURPLE_BORDER
         
@@ -540,44 +547,72 @@ class LoginScene:
         back_text = font.render("◄  BACK", True, _WHITE)
         surface.blit(back_text, back_text.get_rect(center=self.back_rect.center))
 
-    def _render_popup(self, surface: pygame.Surface, scale: float, main_msg: str, sub_msg: str, border_col) -> None:
+    def _draw_techy_corners(self, surface: pygame.Surface, rect: pygame.Rect, color, scale: float, length: int = 16) -> None:
+        l = int(length * scale)
+        th = max(1, int(2 * scale))
+        
+        pygame.draw.line(surface, color, rect.topleft, (rect.left + l, rect.top), width=th)
+        pygame.draw.line(surface, color, rect.topleft, (rect.left, rect.top + l), width=th)
+        pygame.draw.line(surface, color, (rect.right, rect.top), (rect.right - l, rect.top), width=th)
+        pygame.draw.line(surface, color, (rect.right, rect.top), (rect.right, rect.top + l), width=th)
+        pygame.draw.line(surface, color, (rect.left, rect.bottom), (rect.left + l, rect.bottom), width=th)
+        pygame.draw.line(surface, color, (rect.left, rect.bottom), (rect.left, rect.bottom - l), width=th)
+        pygame.draw.line(surface, color, rect.bottomright, (rect.right - l, rect.bottom), width=th)
+        pygame.draw.line(surface, color, rect.bottomright, (rect.right, rect.bottom - l), width=th)
+
+    def _render_popup(self, surface: pygame.Surface, scale: float, main_msg: str, sub_msg: str, border_col, icon_symbol: str = "!") -> None:
         overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((3, 2, 15, 180))
+        overlay.fill((5, 3, 20, 210))
         surface.blit(overlay, (0, 0))
 
-        pop_w = min(int(420 * scale), int(self.width * 0.75))
-        pop_h = int(180 * scale)
+        pop_w = min(int(440 * scale), int(self.width * 0.78))
+        pop_h = int(210 * scale)
         pop_rect = pygame.Rect((self.width - pop_w) // 2, (self.height - pop_h) // 2, pop_w, pop_h)
 
         pop_surf = pygame.Surface((pop_w, pop_h), pygame.SRCALPHA)
-        pygame.draw.polygon(pop_surf, (45, 22, 85, 240), [
-            (15, 0), (pop_w - 15, 0), (pop_w, 15), (pop_w, pop_h - 15),
-            (pop_w - 15, pop_h), (15, pop_h), (0, pop_h - 15), (0, 15)
-        ])
-        pygame.draw.polygon(pop_surf, border_col, [
-            (15, 0), (pop_w - 15, 0), (pop_w, 15), (pop_w, pop_h - 15),
-            (pop_w - 15, pop_h), (15, pop_h), (0, pop_h - 15), (0, 15)
-        ], width=2)
+        c_cut = 18
+        pop_points = [
+            (c_cut, 0), (pop_w - c_cut, 0), (pop_w, c_cut),
+            (pop_w, pop_h - c_cut), (pop_w - c_cut, pop_h),
+            (c_cut, pop_h), (0, pop_h - c_cut), (0, c_cut)
+        ]
+        
+        pygame.draw.polygon(pop_surf, (28, 12, 55, 245), pop_points)
+        pygame.draw.polygon(pop_surf, border_col, pop_points, width=max(2, int(2 * scale)))
         surface.blit(pop_surf, pop_rect.topleft)
 
-        msg_font = FontManager.get_font(max(12, int(14 * scale)), bold=True)
+        self._draw_techy_corners(surface, pop_rect, border_col, scale, length=16)
+        inner_trim = pop_rect.inflate(-int(8 * scale), -int(8 * scale))
+        self._draw_techy_corners(surface, inner_trim, (border_col[0]//2, border_col[1]//2, border_col[2]//2), scale, length=8)
+
+        badge_radius = int(18 * scale)
+        badge_center = (pop_rect.centerx, pop_rect.top + int(38 * scale))
+        pygame.draw.circle(surface, (50, 20, 90), badge_center, badge_radius)
+        pygame.draw.circle(surface, border_col, badge_center, badge_radius, width=max(1, int(2 * scale)))
+        
+        badge_font = FontManager.get_font(max(13, int(16 * scale)), bold=True)
+        badge_text = badge_font.render(icon_symbol, True, _WHITE)
+        surface.blit(badge_text, badge_text.get_rect(center=badge_center))
+
+        msg_font = FontManager.get_font(max(14, int(17 * scale)), bold=True)
         msg_surf = msg_font.render(main_msg, True, _WHITE)
-        surface.blit(msg_surf, msg_surf.get_rect(center=(pop_rect.centerx, pop_rect.top + int(55 * scale))))
+        surface.blit(msg_surf, msg_surf.get_rect(center=(pop_rect.centerx, pop_rect.top + int(82 * scale))))
 
-        sub_font = FontManager.get_font(max(10, int(12 * scale)), bold=False)
-        sub_surf = sub_font.render(sub_msg, True, (200, 185, 240))
-        surface.blit(sub_surf, sub_surf.get_rect(center=(pop_rect.centerx, pop_rect.top + int(85 * scale))))
+        sub_font = FontManager.get_font(max(11, int(13 * scale)), bold=False)
+        sub_surf = sub_font.render(sub_msg, True, (225, 205, 255))
+        surface.blit(sub_surf, sub_surf.get_rect(center=(pop_rect.centerx, pop_rect.top + int(114 * scale))))
 
-        btn_w, btn_h = int(100 * scale), int(34 * scale)
-        self.popup_ok_rect = pygame.Rect(pop_rect.centerx - btn_w // 2, pop_rect.bottom - int(45 * scale), btn_w, btn_h)
+        btn_w, btn_h = int(110 * scale), int(38 * scale)
+        self.popup_ok_rect = pygame.Rect(pop_rect.centerx - btn_w // 2, pop_rect.bottom - int(52 * scale), btn_w, btn_h)
         
         mouse_pos = pygame.mouse.get_pos()
         ok_hover = self.popup_ok_rect.collidepoint(mouse_pos)
-        ok_fill = (65, 35, 110) if ok_hover else (48, 24, 90)
+        ok_fill = (90, 45, 150) if ok_hover else (65, 30, 115)
+        ok_border = _NEON_CYAN if ok_hover else border_col
         
-        self._draw_cut_corner_rect(surface, self.popup_ok_rect, fill=ok_fill, border=border_col, scale=scale, cut=6)
-        ok_font = FontManager.get_font(max(11, int(13 * scale)), bold=True)
-        ok_text = ok_font.render("OK", True, _WHITE)
+        self._draw_cut_corner_rect(surface, self.popup_ok_rect, fill=ok_fill, border=ok_border, scale=scale, cut=6)
+        ok_font = FontManager.get_font(max(12, int(14 * scale)), bold=True)
+        ok_text = ok_font.render("O K", True, _WHITE if ok_hover else (235, 220, 255))
         surface.blit(ok_text, ok_text.get_rect(center=self.popup_ok_rect.center))
 
     def _draw_cut_corner_rect(self, surface: pygame.Surface, rect: pygame.Rect, fill, border, scale: float, cut: int = 12) -> None:
