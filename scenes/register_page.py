@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import random
+import re
 import pygame
 from utils.font_manager import FontManager
 from utils.constants import GameState
@@ -10,11 +11,16 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-# Import LoginScene for returning back safely[cite: 2]
+# Import LoginScene and ProfilePage safely
 try:
     from scenes.login_page import LoginScene
 except ImportError:
     LoginScene = None
+
+try:
+    from scenes.profile_page import ProfilePage
+except ImportError:
+    ProfilePage = None
 
 # Colors
 _BLACK = (3, 2, 15)
@@ -31,18 +37,21 @@ class RegisterPage:
         self.width = game_manager.width
         self.height = game_manager.height
         
-        self.fade_alpha = 150
+        # Smooth transition states (Fade-in starts fully opaque and clears out)
+        self.fade_alpha = 255  
+        self.transitioning_out = False
+        self.next_scene = None
+        
         self.float_timer = 0.0
         self.galaxy_timer = 0.0
         
-        # Local galaxy & starfield elements for deep space immersion[cite: 2]
+        # Local galaxy & starfield elements for deep space immersion
         self.galaxy_stars = []
         self.galaxy_dust = []
         self.galaxy_nebulae = []
-        self.local_shooting_stars = []
         self._init_galaxy_environment()
 
-        # Load assets once[cite: 2]
+        # Load assets once
         try:
             self.raw_panel_image = pygame.image.load("assets/image/text/REGISTER.png").convert_alpha()
         except Exception:
@@ -58,30 +67,30 @@ class RegisterPage:
         except Exception:
             self.raw_padlock_icon = None
             
-        # Cached scaled assets to prevent lag[cite: 2]
+        # Cached scaled assets to prevent lag
         self._cached_scale = -1
         self._scaled_panel = None
         self._scaled_profile_icon = None
         self._scaled_padlock_icon = None
         
-        # Text fields[cite: 2]
+        # Text fields
         self.name = ""
         self.username = ""
         self.password = ""
         self.confirm_password = ""
         self.active_field = "name"
         
-        # Cursor & Selection state[cite: 2]
+        # Cursor & Selection state
         self.cursor_visible = True
         self.cursor_timer = 0.0
         self.selection_active = False
         self.show_password = False
         
-        # Popup states ("missing_fields", "password_mismatch", "success")[cite: 2]
+        # Popup states
         self.active_popup = None
         self.popup_anim_timer = 0.0
         
-        # Rects[cite: 2]
+        # Rects
         self.name_rect = pygame.Rect(0, 0, 0, 0)
         self.username_rect = pygame.Rect(0, 0, 0, 0)
         self.password_rect = pygame.Rect(0, 0, 0, 0)
@@ -90,6 +99,8 @@ class RegisterPage:
         self.submit_rect = pygame.Rect(0, 0, 0, 0)
         self.back_rect = pygame.Rect(0, 0, 0, 0)
         self.popup_ok_rect = pygame.Rect(0, 0, 0, 0)
+        self.popup_yes_rect = pygame.Rect(0, 0, 0, 0)
+        self.popup_no_rect = pygame.Rect(0, 0, 0, 0)
 
     def _init_galaxy_environment(self) -> None:
         for _ in range(65):
@@ -156,39 +167,72 @@ class RegisterPage:
         p = self.password.strip()
         cp = self.confirm_password.strip()
         
+        # 1. Check empty fields
         if not n or not u or not p or not cp:
             self._set_popup("missing_fields")
-        elif p != cp:
+            return
+            
+        # 2. Check username length (must be at least 8 characters)
+        if len(u) < 8:
+            self._set_popup("username_invalid")
+            return
+
+        # 3. Check password length (at least 8 chars), contains numbers, and contains special characters
+        has_number = bool(re.search(r'\d', p))
+        has_special = bool(re.search(r'[^A-Za-z0-9]', p))
+        if len(p) < 8 or not has_number or not has_special:
+            self._set_popup("password_invalid")
+            return
+
+        # 4. Check matching passwords
+        if p != cp:
             self._set_popup("password_mismatch")
-        else:
-            self._set_popup("success")
+            return
+
+        # 5. Satisfaction confirmation prompt
+        self._set_popup("satisfaction_prompt")
 
     def handle_event(self, event: pygame.event.Event) -> None:
+        if self.transitioning_out:
+            return
+
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
             
             if self.active_popup:
-                if self.popup_ok_rect.collidepoint(pos):
-                    if self.active_popup == "success":
-                        if LoginScene is not None:
-                            self.game_manager.current_scene = LoginScene(self.game_manager)
-                        else:
-                            self.game_manager.current_scene = None
-                    else:
+                if self.active_popup == "satisfaction_prompt":
+                    if self.popup_yes_rect.collidepoint(pos):
+                        self._set_popup("success")
+                        return
+                    elif self.popup_no_rect.collidepoint(pos):
                         self._set_popup(None)
-                return
+                        return
+                elif self.active_popup == "success":
+                    if self.popup_ok_rect.collidepoint(pos):
+                        self.transitioning_out = True
+                        if ProfilePage is not None:
+                            self.next_scene = ProfilePage(self.game_manager)
+                        else:
+                            self.next_scene = None
+                    return
+                else:
+                    if self.popup_ok_rect.collidepoint(pos):
+                        self._set_popup(None)
+                    return
 
             if self.back_rect.collidepoint(pos):
+                self.transitioning_out = True
                 if LoginScene is not None:
-                    self.game_manager.current_scene = LoginScene(self.game_manager)
+                    self.next_scene = LoginScene(self.game_manager)
                 else:
-                    self.game_manager.current_scene = None
+                    self.next_scene = None
                 return
 
             if self.show_toggle_rect.collidepoint(pos):
                 self.show_password = not self.show_password
                 return
 
+            # Clicking fields updates active field and resets selection
             if self.name_rect.collidepoint(pos):
                 self.active_field = "name"
                 self.selection_active = False
@@ -207,17 +251,26 @@ class RegisterPage:
         elif event.type == pygame.KEYDOWN:
             if self.active_popup:
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                    if self.active_popup == "success":
-                        if LoginScene is not None:
-                            self.game_manager.current_scene = LoginScene(self.game_manager)
+                    if self.active_popup == "satisfaction_prompt":
+                        self._set_popup("success")
+                    elif self.active_popup == "success":
+                        self.transitioning_out = True
+                        if ProfilePage is not None:
+                            self.next_scene = ProfilePage(self.game_manager)
                         else:
-                            self.game_manager.current_scene = None
+                            self.next_scene = None
                     else:
                         self._set_popup(None)
                 return
 
             fields_order = ["name", "username", "password", "confirm_password"]
             
+            # Check for CTRL + A (Select All)
+            mods = pygame.key.get_mods()
+            if mods & pygame.KMOD_CTRL and event.key == pygame.K_a:
+                self.selection_active = True
+                return
+
             if event.key == pygame.K_TAB:
                 current_idx = fields_order.index(self.active_field)
                 self.active_field = fields_order[(current_idx + 1) % len(fields_order)]
@@ -229,12 +282,15 @@ class RegisterPage:
                 return
 
             target_str = getattr(self, self.active_field)
-            if event.key == pygame.K_BACKSPACE:
+            
+            # Handle Backspace or Delete
+            if event.key in (pygame.K_BACKSPACE, pygame.K_DELETE):
                 if self.selection_active:
                     setattr(self, self.active_field, "")
                     self.selection_active = False
                 else:
-                    setattr(self, self.active_field, target_str[:-1])
+                    if event.key == pygame.K_BACKSPACE and target_str:
+                        setattr(self, self.active_field, target_str[:-1])
             else:
                 if event.unicode and event.unicode.isprintable():
                     if self.selection_active:
@@ -247,8 +303,14 @@ class RegisterPage:
         self.width = self.game_manager.width
         self.height = self.game_manager.height
         
-        if self.fade_alpha > 0:
-            self.fade_alpha = max(0, self.fade_alpha - 15)
+        # Handle smooth fade transitions
+        if self.transitioning_out:
+            self.fade_alpha = min(255, self.fade_alpha + 25)
+            if self.fade_alpha >= 255:
+                self.game_manager.current_scene = self.next_scene
+                return
+        elif self.fade_alpha > 0:
+            self.fade_alpha = max(0, self.fade_alpha - 20)
             
         self.float_timer += 0.05
         self.galaxy_timer += 0.03
@@ -293,7 +355,6 @@ class RegisterPage:
 
         s = self.game_manager._get_scale()
         
-        # Make panel wider
         panel_w = min(int(920 * s), int(self.width * 0.98))
         if self.raw_panel_image:
             orig_w, orig_h = self.raw_panel_image.get_size()
@@ -305,7 +366,7 @@ class RegisterPage:
 
         panel_x = (self.width - panel_w) // 2
         float_offset = int(math.sin(self.float_timer) * (6 * s))
-        panel_y = ((self.height - panel_h) // 2) + int(10 * s) + float_offset
+        panel_y = ((self.height - panel_h) // 2) + int(28 * s) + float_offset
         
         panel_rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
 
@@ -325,7 +386,6 @@ class RegisterPage:
 
         self._draw_techy_corners(surface, panel_rect, _PURPLE_BORDER, s, length=18)
 
-        # Make input fields even smaller/narrower (0.48) and pushed down a bit (190 * s)
         field_w = int(panel_w * 0.48)
         field_h = max(38, int(46 * s))
         field_x = panel_rect.centerx - field_w // 2
@@ -344,7 +404,7 @@ class RegisterPage:
         # 2. Username Input
         self.username_rect = pygame.Rect(field_x, start_y + spacing_y, field_w, field_h)
         self._draw_cyber_input(
-            surface, self.username_rect, self.username, "Username", 
+            surface, self.username_rect, self.username, "Username (min 8 chars)", 
             is_active=(self.active_field == "username"), is_password=False, 
             icon_img=self._scaled_profile_icon, scale=s
         )
@@ -352,7 +412,7 @@ class RegisterPage:
         # 3. Password Input
         self.password_rect = pygame.Rect(field_x, start_y + spacing_y * 2, field_w, field_h)
         self._draw_cyber_input(
-            surface, self.password_rect, self.password, "Password", 
+            surface, self.password_rect, self.password, "Password (8+ chars, num, symbol)", 
             is_active=(self.active_field == "password"), is_password=not self.show_password, 
             icon_img=self._scaled_padlock_icon, scale=s, has_show_toggle=True
         )
@@ -365,13 +425,12 @@ class RegisterPage:
             icon_img=self._scaled_padlock_icon, scale=s
         )
 
-        # Make Submit Register Button smaller/narrower as well
         btn_w = int(field_w * 0.70)
         btn_h = max(40, int(48 * s))
         self.submit_rect = pygame.Rect(panel_rect.centerx - btn_w // 2, start_y + spacing_y * 4 + int(10 * s), btn_w, btn_h)
         
         mouse_pos = pygame.mouse.get_pos()
-        btn_hovered = self.submit_rect.collidepoint(mouse_pos) and (self.active_popup is None)
+        btn_hovered = self.submit_rect.collidepoint(mouse_pos) and (self.active_popup is None) and not self.transitioning_out
         
         btn_fill = (80, 42, 145) if btn_hovered else (55, 24, 98)
         btn_border = _NEON_CYAN if btn_hovered else _PURPLE_BORDER
@@ -394,11 +453,18 @@ class RegisterPage:
         # Active Popup Dialogs
         if self.active_popup == "missing_fields":
             self._render_popup(surface, s, "Incomplete Details", "Please fill in all input fields!", _NEON_CYAN, icon_symbol="?")
+        elif self.active_popup == "username_invalid":
+            self._render_popup(surface, s, "Username Error", "Username must be at least 8 characters long!", _PURPLE_BORDER, icon_symbol="!")
+        elif self.active_popup == "password_invalid":
+            self._render_popup(surface, s, "Password Error", "Password needs 8+ chars, numbers & special symbols!", _PURPLE_BORDER, icon_symbol="!")
         elif self.active_popup == "password_mismatch":
-            self._render_popup(surface, s, "Password Error", "Passwords do not match!", _PURPLE_BORDER, icon_symbol="!")
+            self._render_popup(surface, s, "Password Mismatch", "Retyped password does not match!", _PURPLE_BORDER, icon_symbol="!")
+        elif self.active_popup == "satisfaction_prompt":
+            self._render_yes_no_popup(surface, s, "Confirmation", "Are you satisfied?")
         elif self.active_popup == "success":
-            self._render_popup(surface, s, "Registration Complete", "Account successfully created!", _NEON_CYAN, icon_symbol="✓")
+            self._render_popup(surface, s, "Success", "You have successfully registered!", _NEON_CYAN, icon_symbol="✓")
 
+        # Smooth transition fade overlay
         if self.fade_alpha > 0:
             fade_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
             fade_surf.fill((*_BLACK, self.fade_alpha))
@@ -431,14 +497,14 @@ class RegisterPage:
     def _render_title_image_top(self) -> None:
         if self.game_manager.title_image:
             orig_w, orig_h = self.game_manager.title_image.get_size()
-            max_w = int(self.width * 0.62)
-            max_h = int(self.height * 0.22)
+            max_w = int(self.width * 0.58)
+            max_h = int(self.height * 0.18)
             scale_factor = min(max_w / orig_w, max_h / orig_h)
             target_w = max(1, int(orig_w * scale_factor))
             target_h = max(1, int(orig_h * scale_factor))
             scaled_img = pygame.transform.smoothscale(self.game_manager.title_image, (target_w, target_h))
             
-            rect = scaled_img.get_rect(center=(self.width // 2, int(self.height * 0.12)))
+            rect = scaled_img.get_rect(center=(self.width // 2, int(self.height * 0.08)))
             self.game_manager.screen.blit(scaled_img, rect)
 
     def _draw_cyber_input(self, surface: pygame.Surface, rect: pygame.Rect, text: str, placeholder: str, is_active: bool, is_password: bool, icon_img: pygame.Surface | None, scale: float, has_show_toggle: bool = False) -> None:
@@ -482,7 +548,7 @@ class RegisterPage:
             )
             right_offset_limit = self.show_toggle_rect.left - int(8 * scale)
             
-            toggle_hover = self.show_toggle_rect.collidepoint(pygame.mouse.get_pos()) and (self.active_popup is None)
+            toggle_hover = self.show_toggle_rect.collidepoint(pygame.mouse.get_pos()) and (self.active_popup is None) and not self.transitioning_out
             toggle_bg_color = (70, 35, 120) if toggle_hover else (45, 22, 85)
             
             self._draw_cut_corner_rect(surface, self.show_toggle_rect, fill=toggle_bg_color, border=_NEON_CYAN if toggle_hover else border_color, scale=scale, cut=4)
@@ -523,7 +589,7 @@ class RegisterPage:
         self.back_rect = pygame.Rect(int(30 * scale), int(28 * scale), btn_w, btn_h)
         
         mouse_pos = pygame.mouse.get_pos()
-        hovered = self.back_rect.collidepoint(mouse_pos) and (self.active_popup is None)
+        hovered = self.back_rect.collidepoint(mouse_pos) and (self.active_popup is None) and not self.transitioning_out
         fill_color = (65, 32, 110, 230) if hovered else (42, 20, 75, 200)
         border_color = _NEON_CYAN if hovered else _PURPLE_BORDER
         
@@ -606,6 +672,78 @@ class RegisterPage:
         ok_font = FontManager.get_font(max(14, int(17 * scale)), bold=True)
         ok_text = ok_font.render("O K", True, _WHITE if ok_hover else (235, 220, 255))
         surface.blit(ok_text, ok_text.get_rect(center=self.popup_ok_rect.center))
+
+    def _render_yes_no_popup(self, surface: pygame.Surface, scale: float, main_msg: str, sub_msg: str) -> None:
+        anim_progress = min(1.0, self.popup_anim_timer)
+        ease_scale = 0.85 + (0.15 * anim_progress)
+        alpha_val = int(220 * anim_progress)
+
+        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        overlay.fill((5, 3, 20, alpha_val))
+        surface.blit(overlay, (0, 0))
+
+        pop_w = int(460 * scale)
+        pop_h = int(230 * scale)
+        
+        actual_pop_w = int(pop_w * ease_scale)
+        actual_pop_h = int(pop_h * ease_scale)
+        
+        pop_rect = pygame.Rect((self.width - actual_pop_w) // 2, (self.height - actual_pop_h) // 2, actual_pop_w, actual_pop_h)
+
+        pop_surf = pygame.Surface((actual_pop_w, actual_pop_h), pygame.SRCALPHA)
+        c_cut = int(14 * ease_scale)
+        pop_points = [
+            (c_cut, 0), (actual_pop_w - c_cut, 0), (actual_pop_w, c_cut),
+            (actual_pop_w, actual_pop_h - c_cut), (actual_pop_w - c_cut, actual_pop_h),
+            (c_cut, actual_pop_h), (0, actual_pop_h - c_cut), (0, c_cut)
+        ]
+        
+        pygame.draw.polygon(pop_surf, (28, 12, 55, int(250 * anim_progress)), pop_points)
+        pygame.draw.polygon(pop_surf, _NEON_CYAN, pop_points, width=max(2, int(2 * scale)))
+        surface.blit(pop_surf, pop_rect.topleft)
+
+        self._draw_techy_corners(surface, pop_rect, _NEON_CYAN, scale, length=14)
+
+        badge_radius = int(18 * scale)
+        badge_center = (pop_rect.centerx, pop_rect.top + int(36 * scale))
+        pygame.draw.circle(surface, (50, 20, 90), badge_center, badge_radius)
+        pygame.draw.circle(surface, _NEON_CYAN, badge_center, badge_radius, width=max(1, int(2 * scale)))
+        
+        badge_font = FontManager.get_font(max(15, int(20 * scale)), bold=True)
+        badge_text = badge_font.render("?", True, _WHITE)
+        surface.blit(badge_text, badge_text.get_rect(center=badge_center))
+
+        msg_font = FontManager.get_font(max(17, int(21 * scale)), bold=True)
+        msg_surf = msg_font.render(main_msg, True, _WHITE)
+        surface.blit(msg_surf, msg_surf.get_rect(center=(pop_rect.centerx, pop_rect.top + int(86 * scale))))
+
+        sub_font = FontManager.get_font(max(12, int(15 * scale)), bold=False)
+        sub_surf = sub_font.render(sub_msg, True, (240, 220, 255))
+        surface.blit(sub_surf, sub_surf.get_rect(center=(pop_rect.centerx, pop_rect.top + int(116 * scale))))
+
+        btn_w, btn_h = int(110 * scale), int(38 * scale)
+        spacing = int(20 * scale)
+        total_w = (btn_w * 2) + spacing
+        start_x = pop_rect.centerx - total_w // 2
+        btn_y = pop_rect.bottom - int(56 * scale)
+
+        self.popup_yes_rect = pygame.Rect(start_x, btn_y, btn_w, btn_h)
+        self.popup_no_rect = pygame.Rect(start_x + btn_w + spacing, btn_y, btn_w, btn_h)
+        
+        mouse_pos = pygame.mouse.get_pos()
+        
+        # Yes Button
+        yes_hover = self.popup_yes_rect.collidepoint(mouse_pos)
+        self._draw_cut_corner_rect(surface, self.popup_yes_rect, fill=(90, 45, 150) if yes_hover else (65, 30, 115), border=_NEON_CYAN, scale=scale, cut=6)
+        yes_font = FontManager.get_font(max(14, int(17 * scale)), bold=True)
+        yes_text = yes_font.render("YES", True, _WHITE if yes_hover else (235, 220, 255))
+        surface.blit(yes_text, yes_text.get_rect(center=self.popup_yes_rect.center))
+
+        # No Button
+        no_hover = self.popup_no_rect.collidepoint(mouse_pos)
+        self._draw_cut_corner_rect(surface, self.popup_no_rect, fill=(130, 30, 70) if no_hover else (100, 20, 50), border=_PURPLE_BORDER, scale=scale, cut=6)
+        no_text = yes_font.render("NO", True, _WHITE if no_hover else (235, 220, 255))
+        surface.blit(no_text, no_text.get_rect(center=self.popup_no_rect.center))
 
     def _draw_cut_corner_rect(self, surface: pygame.Surface, rect: pygame.Rect, fill, border, scale: float, cut: int = 12) -> None:
         c = min(cut, rect.width // 4, rect.height // 2)
