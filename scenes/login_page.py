@@ -80,6 +80,7 @@ class LoginScene:
         
         # Popup states ("unregistered", "missing_password", "missing_credentials")
         self.active_popup = None
+        self.popup_anim_timer = 0.0  # For smooth popup entrance animation
         
         # Rects
         self.username_rect = pygame.Rect(0, 0, 0, 0)
@@ -143,19 +144,25 @@ class LoginScene:
             else:
                 self._scaled_padlock_icon = None
 
+    def _set_popup(self, popup_type: str | None) -> None:
+        if self.active_popup != popup_type:
+            self.active_popup = popup_type
+            if popup_type is not None:
+                self.popup_anim_timer = 0.0
+
     def _handle_submission(self) -> None:
         u = self.username.strip()
         p = self.password.strip()
         
         if u and not p:
-            self.active_popup = "missing_password"
+            self._set_popup("missing_password")
         elif not u and p:
-            self.active_popup = "unregistered"
+            self._set_popup("unregistered")
         elif not u and not p:
-            self.active_popup = "missing_credentials"
+            self._set_popup("missing_credentials")
         else:
             if u.lower() not in REGISTERED_USERS:
-                self.active_popup = "unregistered"
+                self._set_popup("unregistered")
             else:
                 self.game_manager.state = GameState.MENU
                 self.game_manager.current_scene = None
@@ -166,7 +173,7 @@ class LoginScene:
             
             if self.active_popup:
                 if self.popup_ok_rect.collidepoint(pos):
-                    self.active_popup = None
+                    self._set_popup(None)
                 return
 
             if self.back_rect.collidepoint(pos):
@@ -195,7 +202,7 @@ class LoginScene:
         elif event.type == pygame.KEYDOWN:
             if self.active_popup:
                 if event.key in (pygame.K_RETURN, pygame.K_SPACE):
-                    self.active_popup = None
+                    self._set_popup(None)
                 return
 
             mods = pygame.key.get_mods()
@@ -251,6 +258,10 @@ class LoginScene:
         self.float_timer += 0.05
         self.galaxy_timer += 0.03
         self.cursor_timer += 0.03
+        
+        if self.active_popup:
+            self.popup_anim_timer = min(1.0, self.popup_anim_timer + 0.12)
+
         if self.cursor_timer >= 1.0:
             self.cursor_timer = 0.0
             self.cursor_visible = not self.cursor_visible
@@ -382,7 +393,7 @@ class LoginScene:
         btn_text = btn_font.render("→   L O G   I N", True, _WHITE if btn_hovered else (235, 220, 255))
         surface.blit(btn_text, btn_text.get_rect(center=self.submit_rect.center))
 
-        # Register Link (Larger text layout)
+        # Register Link
         link_font = FontManager.get_font(max(12, int(15 * s)), bold=False)
         link_text_surf = link_font.render("Haven't registered to Space Invaders? ", True, (210, 195, 235))
         click_text_surf = link_font.render("Click Here!  >", True, _NEON_CYAN)
@@ -400,7 +411,7 @@ class LoginScene:
         # Back Button
         self._draw_back_button(surface, s)
 
-        # Active Popup Dialog
+        # Active Popup Dialog (Smaller Compact Size)
         if self.active_popup == "unregistered":
             self._render_popup(surface, s, "Account Not Registered", "You haven't registered yet!", _PURPLE_BORDER, icon_symbol="!")
         elif self.active_popup == "missing_password":
@@ -440,7 +451,7 @@ class LoginScene:
         manager_shooting_stars = getattr(self.game_manager, "shooting_stars", [])
         if manager_shooting_stars:
             for shooting_star in manager_shooting_stars:
-                shooting_star.render(screen)
+                shooting_star.render(shooting_star)
         else:
             for ss in self.local_shooting_stars:
                 end_x = ss["x"] - ss["length"]
@@ -560,50 +571,134 @@ class LoginScene:
         pygame.draw.line(surface, color, rect.bottomright, (rect.right - l, rect.bottom), width=th)
         pygame.draw.line(surface, color, rect.bottomright, (rect.right, rect.bottom - l), width=th)
 
+    def _draw_circuit_decorations(self, surface: pygame.Surface, rect: pygame.Rect, color, scale: float) -> None:
+        line_col = (color[0], color[1], color[2], 120)
+        node_col = (color[0], color[1], color[2], 200)
+        cyan_accent = (80, 230, 255, 200)
+        th = max(1, int(1.5 * scale))
+        th_thin = max(1, int(1 * scale))
+
+        # --- 10 SCALED CIRCUITS MAPPING COMPACT POPUP DIMENSIONS ---
+
+        # 1. Top-Left Main Horizontal Track
+        p1_a = (rect.left + int(14 * scale), rect.top + int(42 * scale))
+        p1_b = (rect.left + int(50 * scale), rect.top + int(42 * scale))
+        pygame.draw.line(surface, line_col, p1_a, p1_b, width=th)
+        pygame.draw.circle(surface, node_col, p1_b, int(2 * scale))
+
+        # 2. Top-Left Upward Diagonal Branch to Node
+        p2_a = p1_b
+        p2_b = (rect.left + int(72 * scale), rect.top + int(26 * scale))
+        pygame.draw.line(surface, line_col, p2_a, p2_b, width=th)
+        pygame.draw.circle(surface, cyan_accent, p2_b, int(1.8 * scale))
+
+        # 3. Top-Left Secondary Vertical Drop
+        p3_a = (rect.left + int(36 * scale), rect.top + int(42 * scale))
+        p3_b = (rect.left + int(36 * scale), rect.top + int(68 * scale))
+        pygame.draw.line(surface, line_col, p3_a, p3_b, width=th_thin)
+        pygame.draw.circle(surface, node_col, p3_b, int(1.8 * scale))
+
+        # 4. Top-Right Main Horizontal Track
+        p4_a = (rect.right - int(14 * scale), rect.top + int(42 * scale))
+        p4_b = (rect.right - int(50 * scale), rect.top + int(42 * scale))
+        pygame.draw.line(surface, line_col, p4_a, p4_b, width=th)
+        pygame.draw.circle(surface, node_col, p4_b, int(2 * scale))
+
+        # 5. Top-Right Upward Diagonal Branch to Node
+        p5_a = p4_b
+        p5_b = (rect.right - int(72 * scale), rect.top + int(26 * scale))
+        pygame.draw.line(surface, line_col, p5_a, p5_b, width=th)
+        pygame.draw.circle(surface, cyan_accent, p5_b, int(1.8 * scale))
+
+        # 6. Top-Right Secondary Vertical Drop
+        p6_a = (rect.right - int(36 * scale), rect.top + int(42 * scale))
+        p6_b = (rect.right - int(36 * scale), rect.top + int(68 * scale))
+        pygame.draw.line(surface, line_col, p6_a, p6_b, width=th_thin)
+        pygame.draw.circle(surface, node_col, p6_b, int(1.8 * scale))
+
+        # 7. Middle-Left Flank Horizontal Extension
+        p7_a = (rect.left + int(10 * scale), rect.centery - int(10 * scale))
+        p7_b = (rect.left + int(28 * scale), rect.centery - int(10 * scale))
+        pygame.draw.line(surface, line_col, p7_a, p7_b, width=th_thin)
+        pygame.draw.circle(surface, node_col, p7_b, int(1.8 * scale))
+
+        # 8. Middle-Right Flank Horizontal Extension
+        p8_a = (rect.right - int(10 * scale), rect.centery - int(10 * scale))
+        p8_b = (rect.right - int(28 * scale), rect.centery - int(10 * scale))
+        pygame.draw.line(surface, line_col, p8_a, p8_b, width=th_thin)
+        pygame.draw.circle(surface, node_col, p8_b, int(1.8 * scale))
+
+        # 9. Bottom-Left Corner Terminal Node & Trace
+        p9_a = (rect.left + int(16 * scale), rect.bottom - int(20 * scale))
+        p9_b = (rect.left + int(40 * scale), rect.bottom - int(20 * scale))
+        pygame.draw.line(surface, line_col, p9_a, p9_b, width=th_thin)
+        pygame.draw.circle(surface, cyan_accent, p9_b, int(1.8 * scale))
+
+        # 10. Bottom-Right Corner Terminal Node & Trace
+        p10_a = (rect.right - int(16 * scale), rect.bottom - int(20 * scale))
+        p10_b = (rect.right - int(40 * scale), rect.bottom - int(20 * scale))
+        pygame.draw.line(surface, line_col, p10_a, p10_b, width=th_thin)
+        pygame.draw.circle(surface, cyan_accent, p10_b, int(1.8 * scale))
+
     def _render_popup(self, surface: pygame.Surface, scale: float, main_msg: str, sub_msg: str, border_col, icon_symbol: str = "!") -> None:
+        anim_progress = min(1.0, self.popup_anim_timer)
+        ease_scale = 0.85 + (0.15 * anim_progress)
+        alpha_val = int(220 * anim_progress)
+
         overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        overlay.fill((5, 3, 20, 210))
+        overlay.fill((5, 3, 20, alpha_val))
         surface.blit(overlay, (0, 0))
 
-        pop_w = min(int(440 * scale), int(self.width * 0.78))
-        pop_h = int(210 * scale)
-        pop_rect = pygame.Rect((self.width - pop_w) // 2, (self.height - pop_h) // 2, pop_w, pop_h)
+        # --- REDUCED COMPACT POPUP DIMENSIONS ---
+        pop_w = int(460 * scale)
+        pop_h = int(230 * scale)
+        
+        actual_pop_w = int(pop_w * ease_scale)
+        actual_pop_h = int(pop_h * ease_scale)
+        
+        pop_rect = pygame.Rect((self.width - actual_pop_w) // 2, (self.height - actual_pop_h) // 2, actual_pop_w, actual_pop_h)
 
-        pop_surf = pygame.Surface((pop_w, pop_h), pygame.SRCALPHA)
-        c_cut = 18
+        pop_surf = pygame.Surface((actual_pop_w, actual_pop_h), pygame.SRCALPHA)
+        c_cut = int(14 * ease_scale)
         pop_points = [
-            (c_cut, 0), (pop_w - c_cut, 0), (pop_w, c_cut),
-            (pop_w, pop_h - c_cut), (pop_w - c_cut, pop_h),
-            (c_cut, pop_h), (0, pop_h - c_cut), (0, c_cut)
+            (c_cut, 0), (actual_pop_w - c_cut, 0), (actual_pop_w, c_cut),
+            (actual_pop_w, actual_pop_h - c_cut), (actual_pop_w - c_cut, actual_pop_h),
+            (c_cut, actual_pop_h), (0, actual_pop_h - c_cut), (0, c_cut)
         ]
         
-        pygame.draw.polygon(pop_surf, (28, 12, 55, 245), pop_points)
+        pygame.draw.polygon(pop_surf, (28, 12, 55, int(250 * anim_progress)), pop_points)
         pygame.draw.polygon(pop_surf, border_col, pop_points, width=max(2, int(2 * scale)))
         surface.blit(pop_surf, pop_rect.topleft)
 
-        self._draw_techy_corners(surface, pop_rect, border_col, scale, length=16)
-        inner_trim = pop_rect.inflate(-int(8 * scale), -int(8 * scale))
-        self._draw_techy_corners(surface, inner_trim, (border_col[0]//2, border_col[1]//2, border_col[2]//2), scale, length=8)
+        self._draw_techy_corners(surface, pop_rect, border_col, scale, length=14)
+        inner_trim = pop_rect.inflate(-int(5 * scale), -int(5 * scale))
+        self._draw_techy_corners(surface, inner_trim, (border_col[0]//2, border_col[1]//2, border_col[2]//2), scale, length=7)
+
+        # Draw the 10 circuit traces optimized for the smaller box
+        self._draw_circuit_decorations(surface, pop_rect, border_col, scale)
 
         badge_radius = int(18 * scale)
-        badge_center = (pop_rect.centerx, pop_rect.top + int(38 * scale))
+        badge_center = (pop_rect.centerx, pop_rect.top + int(36 * scale))
         pygame.draw.circle(surface, (50, 20, 90), badge_center, badge_radius)
         pygame.draw.circle(surface, border_col, badge_center, badge_radius, width=max(1, int(2 * scale)))
         
-        badge_font = FontManager.get_font(max(13, int(16 * scale)), bold=True)
+        badge_font = FontManager.get_font(max(15, int(20 * scale)), bold=True)
         badge_text = badge_font.render(icon_symbol, True, _WHITE)
         surface.blit(badge_text, badge_text.get_rect(center=badge_center))
 
-        msg_font = FontManager.get_font(max(14, int(17 * scale)), bold=True)
+        # Main header text scaled down slightly for compact width
+        msg_font = FontManager.get_font(max(17, int(21 * scale)), bold=True)
         msg_surf = msg_font.render(main_msg, True, _WHITE)
-        surface.blit(msg_surf, msg_surf.get_rect(center=(pop_rect.centerx, pop_rect.top + int(82 * scale))))
+        surface.blit(msg_surf, msg_surf.get_rect(center=(pop_rect.centerx, pop_rect.top + int(86 * scale))))
 
-        sub_font = FontManager.get_font(max(11, int(13 * scale)), bold=False)
-        sub_surf = sub_font.render(sub_msg, True, (225, 205, 255))
-        surface.blit(sub_surf, sub_surf.get_rect(center=(pop_rect.centerx, pop_rect.top + int(114 * scale))))
+        # Sub-message description text
+        sub_font = FontManager.get_font(max(12, int(15 * scale)), bold=False)
+        sub_surf = sub_font.render(sub_msg, True, (240, 220, 255))
+        surface.blit(sub_surf, sub_surf.get_rect(center=(pop_rect.centerx, pop_rect.top + int(116 * scale))))
 
-        btn_w, btn_h = int(110 * scale), int(38 * scale)
-        self.popup_ok_rect = pygame.Rect(pop_rect.centerx - btn_w // 2, pop_rect.bottom - int(52 * scale), btn_w, btn_h)
+        # OK Action Button (Compact and well-positioned inside smaller box bounds)
+        btn_w, btn_h = int(140 * scale), int(38 * scale)
+        self.popup_ok_rect = pygame.Rect(pop_rect.centerx - btn_w // 2, pop_rect.bottom - int(56 * scale), btn_w, btn_h)
         
         mouse_pos = pygame.mouse.get_pos()
         ok_hover = self.popup_ok_rect.collidepoint(mouse_pos)
@@ -611,7 +706,7 @@ class LoginScene:
         ok_border = _NEON_CYAN if ok_hover else border_col
         
         self._draw_cut_corner_rect(surface, self.popup_ok_rect, fill=ok_fill, border=ok_border, scale=scale, cut=6)
-        ok_font = FontManager.get_font(max(12, int(14 * scale)), bold=True)
+        ok_font = FontManager.get_font(max(14, int(17 * scale)), bold=True)
         ok_text = ok_font.render("O K", True, _WHITE if ok_hover else (235, 220, 255))
         surface.blit(ok_text, ok_text.get_rect(center=self.popup_ok_rect.center))
 
