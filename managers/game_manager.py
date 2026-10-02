@@ -17,6 +17,7 @@ from utils.font_manager import FontManager
 from utils.visual_effects import Star
 from scenes.default_page import DefaultPage
 from scenes.login_page import LoginScene
+from scenes.register_page import RegisterPage
 
 
 if TYPE_CHECKING:
@@ -49,7 +50,7 @@ def _cut_corner_panel(
     scale: float,
     cut: Optional[int] = None,
 ) -> None:
-    """Draws a futuristic UI panel with cut corners and neon border accents[cite: 3]."""
+    """Draws a futuristic UI panel with cut corners and neon border accents[cite: 3, 4]."""
     c = cut if cut is not None else max(8, int(18 * scale))
     c = min(c, rect.width // 4, rect.height // 2)
 
@@ -83,7 +84,7 @@ def _cut_corner_panel(
 
 
 class EnhancedButton:
-    """Manages interactive menu buttons with custom hover states, icons, and cut corners[cite: 3]."""
+    """Manages interactive menu buttons with custom hover states, icons, and cut corners[cite: 3, 4]."""
     def __init__(
         self,
         text: str,
@@ -174,7 +175,7 @@ class EnhancedButton:
 
 
 class GameManager:
-    """Controls overall game states, navigation scenes, popups, and the custom hardware cursor."""
+    """Controls overall game states, navigation scenes, popups, and the custom hardware cursor[cite: 4]."""
     def __init__(self, screen: pygame.Surface, width: int, height: int) -> None:
         self.screen = screen
         self.width = width
@@ -218,7 +219,7 @@ class GameManager:
 
         self.stars = self._init_starfield()
         
-        # Initialize and set the native hardware cursor
+        # Initialize and set the native hardware cursor[cite: 4]
         self._cached_cursor = self._get_scaled_cursor()
         pygame.mouse.set_cursor(self._cached_cursor)
         pygame.mouse.set_visible(True)
@@ -331,7 +332,7 @@ class GameManager:
             self.current_scene.handle_event(event)
 
     def update(self, events: List[pygame.event.Event]) -> None:
-        """Updates frame state, transitions, starfields, and menu buttons[cite: 3]."""
+        """Updates frame state, transitions, starfields, and menu buttons[cite: 3, 4]."""
         self._sync_dimensions()
         self.ticks += 1
         
@@ -374,12 +375,13 @@ class GameManager:
                         self.current_scene = LoginScene(self)
                         print("Login button clicked - Opening Login Page...")
                     elif self.buttons["register"].clicked(event):
-                        print("Register button clicked")
+                        self.current_scene = RegisterPage(self)
+                        print("Register button clicked - Opening Register Page...")
                     elif self.buttons["quit"].clicked(event):
                         self.show_quit_popup = True
 
     def render(self) -> None:
-        """Renders the active scene or menu elements, and side frames."""
+        """Renders the active scene or menu elements, and side frames[cite: 4]."""
         self._sync_dimensions()
         
         if self.current_scene and hasattr(self.current_scene, "draw"):
