@@ -49,6 +49,7 @@ def _cut_corner_panel(
     scale: float,
     cut: Optional[int] = None,
 ) -> None:
+    """Draws a futuristic UI panel with cut corners and neon border accents[cite: 3]."""
     c = cut if cut is not None else max(8, int(18 * scale))
     c = min(c, rect.width // 4, rect.height // 2)
 
@@ -82,6 +83,7 @@ def _cut_corner_panel(
 
 
 class EnhancedButton:
+    """Manages interactive menu buttons with custom hover states, icons, and cut corners[cite: 3]."""
     def __init__(
         self,
         text: str,
@@ -172,6 +174,7 @@ class EnhancedButton:
 
 
 class GameManager:
+    """Controls overall game states, navigation scenes, popups, and the custom hardware cursor."""
     def __init__(self, screen: pygame.Surface, width: int, height: int) -> None:
         self.screen = screen
         self.width = width
@@ -214,7 +217,11 @@ class GameManager:
         ]
 
         self.stars = self._init_starfield()
+        
+        # Initialize and set the native hardware cursor
         self._cached_cursor = self._get_scaled_cursor()
+        pygame.mouse.set_cursor(self._cached_cursor)
+        pygame.mouse.set_visible(True)
 
     def _load_title_image(self) -> None:
         path = os.path.join("assets", "image", "text", "text_bg.png")
@@ -234,6 +241,7 @@ class GameManager:
             self.width = cur_w
             self.height = cur_h
             self._cached_cursor = self._get_scaled_cursor()
+            pygame.mouse.set_cursor(self._cached_cursor)
 
     def _get_scale(self) -> float:
         return max(0.5, min(self.width / 1080.0, self.height / 720.0))
@@ -307,7 +315,7 @@ class GameManager:
             )
         return stars
 
-    def _get_scaled_cursor(self) -> pygame.Surface:
+    def _get_scaled_cursor(self) -> pygame.Cursor:
         scale = self._get_scale()
         size = max(14, int(22 * scale))
         color_map = {0: (0, 0, 0, 0), 1: (*_VIOLET, 255), 2: (*_WHITE, 255)}
@@ -315,13 +323,15 @@ class GameManager:
         for y, row in enumerate(self.raw_cursor_matrix):
             for x, value in enumerate(row):
                 raw.set_at((x, y), color_map[value])
-        return pygame.transform.scale(raw, (size, size))
+        scaled_surf = pygame.transform.scale(raw, (size, size))
+        return pygame.Cursor((0, 0), scaled_surf)
 
     def handle_event(self, event: pygame.event.Event) -> None:
         if self.current_scene and hasattr(self.current_scene, "handle_event"):
             self.current_scene.handle_event(event)
 
     def update(self, events: List[pygame.event.Event]) -> None:
+        """Updates frame state, transitions, starfields, and menu buttons[cite: 3]."""
         self._sync_dimensions()
         self.ticks += 1
         
@@ -369,11 +379,11 @@ class GameManager:
                         self.show_quit_popup = True
 
     def render(self) -> None:
+        """Renders the active scene or menu elements, and side frames."""
         self._sync_dimensions()
         
         if self.current_scene and hasattr(self.current_scene, "draw"):
             self.current_scene.draw(self.screen)
-            self.screen.blit(self._cached_cursor, pygame.mouse.get_pos())
             return
 
         self.default_page.render_background()
@@ -393,8 +403,6 @@ class GameManager:
             fade_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
             fade_surface.fill((*_BLACK, self.fade_alpha))
             self.screen.blit(fade_surface, (0, 0))
-
-        self.screen.blit(self._cached_cursor, pygame.mouse.get_pos())
 
     def _render_starfield(self) -> None:
         for star in self.stars:
